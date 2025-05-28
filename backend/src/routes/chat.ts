@@ -63,14 +63,14 @@ router.post('/speak', async (req, res) => {
       'peter-griffin' // This will use your custom voice ID
     );
     
-    if (!speechResponse.success || !speechResponse.audio_url) {
-      throw new Error('No audio data received from ElevenLabs API');
+    if (!speechResponse.success || !speechResponse.video_url) {
+      throw new Error('No video data received from ElevenLabs API');
     }
     
     res.json({
       success: true,
       data: {
-        audioUrl: speechResponse.audio_url,
+        videoUrl: speechResponse.video_url,
         provider: 'elevenlabs'
       }
     });

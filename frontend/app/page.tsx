@@ -12,7 +12,7 @@ interface ChatResponse {
 }
 
 interface SpeechResponse {
-  audioUrl: string;
+  videoUrl: string;
   provider: string;
 }
 
@@ -22,7 +22,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeechLoading, setIsSpeechLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [audioUrl, setAudioUrl] = useState<string>('');
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [fallbackVideoUrl, setFallbackVideoUrl] = useState<string>('');
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -30,7 +31,8 @@ export default function Home() {
     setIsLoading(true);
     setError('');
     setResponse('');
-    setAudioUrl('');
+    setVideoUrl('');
+    setFallbackVideoUrl('');
 
     try {
       const res = await fetch('http://localhost:3001/api/chat/generate', {
@@ -82,10 +84,15 @@ export default function Home() {
       }
 
       if (data.success && data.data) {
-        // Construct the full URL for the audio file
-        const fullAudioUrl = `http://localhost:3001${data.data.audioUrl}`;
-        setAudioUrl(fullAudioUrl);
-        console.log('Audio file ready:', fullAudioUrl);
+        // Construct the full URL for the video file
+        const fullVideoUrl = `http://localhost:3001${data.data.videoUrl}`;
+        const filename = data.data.videoUrl.split('/').pop();
+        const testVideoUrl = `http://localhost:3001/api/videos/test/${filename}`;
+        
+        setVideoUrl(fullVideoUrl);
+        setFallbackVideoUrl(testVideoUrl);
+        console.log('Video file ready:', fullVideoUrl);
+        console.log('Fallback URL:', testVideoUrl);
       } else {
         throw new Error('Invalid speech response format');
       }
@@ -101,7 +108,8 @@ export default function Home() {
     setTopic('');
     setResponse('');
     setError('');
-    setAudioUrl('');
+    setVideoUrl('');
+    setFallbackVideoUrl('');
   };
 
   return (
@@ -203,23 +211,64 @@ export default function Home() {
                     {response}
                   </div>
                   
-                  {/* Audio Player */}
-                  {audioUrl && (
+                  {/* Video Player */}
+                  {videoUrl && (
                     <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                       <div className="flex items-center justify-between mb-3">
-                        <p className="text-blue-700 font-medium">🎵 Audio Generated!</p>
-                        <a 
-                          href={audioUrl} 
-                          download 
-                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          📥 Download MP3
-                        </a>
+                        <p className="text-blue-700 font-medium">🎥 Video Generated!</p>
+                        <div className="flex gap-2">
+                          <a 
+                            href={videoUrl} 
+                            download 
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            📥 Download Video
+                          </a>
+                          {fallbackVideoUrl && (
+                            <a 
+                              href={fallbackVideoUrl} 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              🔗 Direct Link
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <audio controls className="w-full">
-                        <source src={audioUrl} type="audio/mpeg" />
-                        Your browser does not support the audio element.
-                      </audio>
+                      <video 
+                        key={videoUrl} // Force re-render when URL changes
+                        controls 
+                        className="w-full rounded-lg"
+                        preload="metadata"
+                        onError={(e) => {
+                          const target = e.target as HTMLVideoElement;
+                          const error = target.error;
+                          console.error('Video playback error details:', {
+                            code: error?.code,
+                            message: error?.message,
+                            networkState: target.networkState,
+                            readyState: target.readyState,
+                            src: target.src
+                          });
+                          
+                          // Try fallback URL if available and not already tried
+                          if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
+                            console.log('Trying fallback URL:', fallbackVideoUrl);
+                            target.src = fallbackVideoUrl;
+                            target.load();
+                          } else {
+                            setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
+                          }
+                        }}
+                        onLoadStart={() => console.log('Video load started')}
+                        onLoadedMetadata={() => console.log('Video metadata loaded')}
+                        onCanPlay={() => console.log('Video can play')}
+                        onLoadedData={() => console.log('Video data loaded')}
+                      >
+                        <source src={videoUrl} type="video/mp4" />
+                        <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
+                      </video>
                     </div>
                   )}
                 </div>

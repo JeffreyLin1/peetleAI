@@ -4,11 +4,17 @@ import { useState } from 'react';
 
 interface ChatResponse {
   message: string;
+  dialogue?: DialogueLine[];
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+interface DialogueLine {
+  speaker: 'Peter' | 'Stewie';
+  text: string;
 }
 
 interface SpeechResponse {
@@ -18,24 +24,24 @@ interface SpeechResponse {
 
 export default function Home() {
   const [topic, setTopic] = useState('');
-  const [response, setResponse] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSpeechLoading, setIsSpeechLoading] = useState(false);
+  const [dialogue, setDialogue] = useState<DialogueLine[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [fallbackVideoUrl, setFallbackVideoUrl] = useState<string>('');
 
-  const handleGenerate = async () => {
+  const handleGenerateVideo = async () => {
     if (!topic.trim()) return;
 
-    setIsLoading(true);
+    setIsGenerating(true);
     setError('');
-    setResponse('');
     setVideoUrl('');
     setFallbackVideoUrl('');
+    setDialogue([]);
 
     try {
-      const res = await fetch('http://localhost:3001/api/chat/generate', {
+      // Step 1: Generate dialogue
+      const chatRes = await fetch('http://localhost:3001/api/chat/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -43,70 +49,59 @@ export default function Home() {
         body: JSON.stringify({ topic: topic.trim() }),
       });
 
-      const data = await res.json();
+      const chatData = await chatRes.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate response');
+      if (!chatRes.ok) {
+        throw new Error(chatData.error || 'Failed to generate dialogue');
       }
 
-      if (data.success && data.data) {
-        setResponse(data.data.message);
-      } else {
+      if (!chatData.success || !chatData.data) {
         throw new Error('Invalid response format');
       }
-    } catch (err) {
-      console.error('Error generating response:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handleGenerateSpeech = async () => {
-    if (!response.trim()) return;
+      const responseText = chatData.data.message;
+      const dialogueData = chatData.data.dialogue || [];
 
-    setIsSpeechLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('http://localhost:3001/api/chat/speak', {
+      // Step 2: Generate video with speech
+      const speechRes = await fetch('http://localhost:3001/api/chat/speak', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: response.trim() }),
+        body: JSON.stringify({ 
+          text: responseText,
+          dialogue: dialogueData.length > 0 ? dialogueData : undefined
+        }),
       });
 
-      const data = await res.json();
+      const speechData = await speechRes.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate speech');
+      if (!speechRes.ok) {
+        throw new Error(speechData.error || 'Failed to generate video');
       }
 
-      if (data.success && data.data) {
-        // Construct the full URL for the video file
-        const fullVideoUrl = `http://localhost:3001${data.data.videoUrl}`;
-        const filename = data.data.videoUrl.split('/').pop();
+      if (speechData.success && speechData.data) {
+        const fullVideoUrl = `http://localhost:3001${speechData.data.videoUrl}`;
+        const filename = speechData.data.videoUrl.split('/').pop();
         const testVideoUrl = `http://localhost:3001/api/videos/test/${filename}`;
         
         setVideoUrl(fullVideoUrl);
         setFallbackVideoUrl(testVideoUrl);
         console.log('Video file ready:', fullVideoUrl);
-        console.log('Fallback URL:', testVideoUrl);
       } else {
-        throw new Error('Invalid speech response format');
+        throw new Error('Invalid video response format');
       }
     } catch (err) {
-      console.error('Error generating speech:', err);
+      console.error('Error generating video:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
-      setIsSpeechLoading(false);
+      setIsGenerating(false);
     }
   };
 
   const handleReset = () => {
     setTopic('');
-    setResponse('');
+    setDialogue([]);
     setError('');
     setVideoUrl('');
     setFallbackVideoUrl('');
@@ -129,7 +124,7 @@ export default function Home() {
             <span className="text-gray-900">AI</span>
           </h1>
           <p className="text-xl sm:text-2xl text-gray-700 mb-4 max-w-3xl mx-auto font-[var(--font-rubik)]">
-            Generate engaging videos with Subway Surfers gameplay and Peter & Stewie Griffin explanations
+            Generate engaging videos with Peter & Stewie Griffin explanations
           </p>
         </div>
 
@@ -139,7 +134,7 @@ export default function Home() {
             <div className="space-y-6">
               <div>
                 <label htmlFor="topic" className="block text-lg font-medium text-gray-800 mb-3">
-                  What would you like to explain?
+                  What would you like Peter and Stewie to explain?
                 </label>
                 <textarea
                   id="topic"
@@ -148,46 +143,31 @@ export default function Home() {
                   placeholder="Enter a topic or question... (e.g., 'How does photosynthesis work?' or 'Explain quantum physics')"
                   className="w-full px-4 py-4 text-lg bg-white border border-yellow-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none shadow-sm"
                   rows={4}
-                  disabled={isLoading || isSpeechLoading}
+                  disabled={isGenerating}
                 />
               </div>
               
               <div className="flex gap-4">
                 <button
-                  onClick={handleGenerate}
-                  disabled={!topic.trim() || isLoading || isSpeechLoading}
+                  onClick={handleGenerateVideo}
+                  disabled={!topic.trim() || isGenerating}
                   className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
                 >
-                  {isLoading ? (
+                  {isGenerating ? (
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2"></div>
-                      Generating...
+                      Generating Video...
                     </div>
-                  ) : topic.trim() ? 'Generate Explanation' : 'Enter a topic to continue'}
+                  ) : topic.trim() ? 'Generate Video' : 'Enter a topic to continue'}
                 </button>
                 
-                {response && (
-                  <button
-                    onClick={handleGenerateSpeech}
-                    disabled={isSpeechLoading || isLoading}
-                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
-                  >
-                    {isSpeechLoading ? (
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2"></div>
-                        Generating...
-                      </div>
-                    ) : '🎤 Speak'}
-                  </button>
-                )}
-                
-                {(response || error) && (
+                {(videoUrl || error) && (
                   <button
                     onClick={handleReset}
-                    disabled={isLoading || isSpeechLoading}
+                    disabled={isGenerating}
                     className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-xl text-lg transition-all duration-200"
                   >
-                    Reset
+                    New Video
                   </button>
                 )}
               </div>
@@ -199,78 +179,65 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Response Display */}
-              {response && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <span className="text-yellow-600">
-                      AI Explanation:
-                    </span>
-                  </h3>
-                  <div className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                    {response}
-                  </div>
-                  
-                  {/* Video Player */}
-                  {videoUrl && (
-                    <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-blue-700 font-medium">🎥 Video Generated!</p>
-                        <div className="flex gap-2">
-                          <a 
-                            href={videoUrl} 
-                            download 
-                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            📥 Download Video
-                          </a>
-                          {fallbackVideoUrl && (
-                            <a 
-                              href={fallbackVideoUrl} 
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                            >
-                              🔗 Direct Link
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                      <video 
-                        key={videoUrl} // Force re-render when URL changes
-                        controls 
-                        className="w-full rounded-lg"
-                        preload="metadata"
-                        onError={(e) => {
-                          const target = e.target as HTMLVideoElement;
-                          const error = target.error;
-                          console.error('Video playback error details:', {
-                            code: error?.code,
-                            message: error?.message,
-                            networkState: target.networkState,
-                            readyState: target.readyState,
-                            src: target.src
-                          });
-                          
-                          // Try fallback URL if available and not already tried
-                          if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
-                            console.log('Trying fallback URL:', fallbackVideoUrl);
-                            target.src = fallbackVideoUrl;
-                            target.load();
-                          } else {
-                            setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
-                          }
-                        }}
-                        onLoadStart={() => console.log('Video load started')}
-                        onLoadedMetadata={() => console.log('Video metadata loaded')}
-                        onCanPlay={() => console.log('Video can play')}
-                        onLoadedData={() => console.log('Video data loaded')}
+              {/* Video Player */}
+              {videoUrl && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-blue-700 font-medium">
+                      🎥 Your Peter & Stewie Video is Ready!
+                    </p>
+                    <div className="flex gap-2">
+                      <a 
+                        href={videoUrl} 
+                        download 
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                       >
-                        <source src={videoUrl} type="video/mp4" />
-                        <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
-                      </video>
+                        📥 Download Video
+                      </a>
+                      {fallbackVideoUrl && (
+                        <a 
+                          href={fallbackVideoUrl} 
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          🔗 Direct Link
+                        </a>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <video 
+                    key={videoUrl}
+                    controls 
+                    className="w-full rounded-lg"
+                    preload="metadata"
+                    onError={(e) => {
+                      const target = e.target as HTMLVideoElement;
+                      const error = target.error;
+                      console.error('Video playback error details:', {
+                        code: error?.code,
+                        message: error?.message,
+                        networkState: target.networkState,
+                        readyState: target.readyState,
+                        src: target.src
+                      });
+                      
+                      if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
+                        console.log('Trying fallback URL:', fallbackVideoUrl);
+                        target.src = fallbackVideoUrl;
+                        target.load();
+                      } else {
+                        setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
+                      }
+                    }}
+                    onLoadStart={() => console.log('Video load started')}
+                    onLoadedMetadata={() => console.log('Video metadata loaded')}
+                    onCanPlay={() => console.log('Video can play')}
+                    onLoadedData={() => console.log('Video data loaded')}
+                  >
+                    <source src={videoUrl} type="video/mp4" />
+                    <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
+                  </video>
                 </div>
               )}
             </div>

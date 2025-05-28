@@ -1,6 +1,6 @@
 import express from 'express';
 import { OpenAIService } from '../services/openai';
-import { ElevenLabsService } from '../services/elevenlabs';
+import { ElevenLabsService, DialogueLine } from '../services/elevenlabs';
 
 const router = express.Router();
 const openaiService = new OpenAIService();
@@ -40,7 +40,7 @@ router.post('/generate', async (req, res) => {
 // POST /api/chat/speak
 router.post('/speak', async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, dialogue } = req.body;
 
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       return res.status(400).json({ 
@@ -57,11 +57,20 @@ router.post('/speak', async (req, res) => {
     // Create ElevenLabsService instance when needed
     const elevenLabsService = new ElevenLabsService();
 
-    // Generate speech with preconfigured voice settings
-    const speechResponse = await elevenLabsService.generateSpeech(
-      text.trim(), 
-      'peter-griffin' // This will use your custom voice ID
-    );
+    let speechResponse;
+
+    // Check if we have dialogue data to generate multi-voice speech
+    if (dialogue && Array.isArray(dialogue) && dialogue.length > 0) {
+      console.log('Generating dialogue speech with multiple voices...');
+      speechResponse = await elevenLabsService.generateDialogueSpeech(dialogue);
+    } else {
+      console.log('Generating single voice speech...');
+      // Generate speech with preconfigured voice settings (fallback to single voice)
+      speechResponse = await elevenLabsService.generateSpeech(
+        text.trim(), 
+        'peter-griffin' // This will use your custom voice ID
+      );
+    }
     
     if (!speechResponse.success || !speechResponse.video_url) {
       throw new Error('No video data received from ElevenLabs API');

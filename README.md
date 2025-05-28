@@ -1,36 +1,160 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PeetleAI
 
-## Getting Started
+A platform for generating engaging educational videos with Subway Surfers gameplay backgrounds and Peter & Stewie Griffin explanations.
 
-First, run the development server:
+## Project Structure
+
+This is a monorepo containing:
+
+- `frontend/` - Next.js React application with TypeScript and Tailwind CSS
+- `backend/` - Express.js API server with OpenAI integration
+- `shared/` - Shared types and utilities (future use)
+
+## Prerequisites
+
+- Node.js 18+ 
+- npm or yarn
+- OpenAI API key
+
+## Setup Instructions
+
+### 1. Clone and Install Dependencies
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install root dependencies
+npm install
+
+# Install all workspace dependencies
+npm run install:all
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Backend Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cd backend
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a `.env` file in the backend directory:
 
-## Learn More
+```env
+PORT=3001
+OPENAI_API_KEY=your_openai_api_key_here
+FRONTEND_URL=http://localhost:3000
+NODE_ENV=development
+```
 
-To learn more about Next.js, take a look at the following resources:
+**Important:** Replace `your_openai_api_key_here` with your actual OpenAI API key.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Frontend Setup
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The frontend is already configured to connect to the backend at `http://localhost:3001`.
 
-## Deploy on Vercel
+## Running the Application
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Development Mode
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+From the root directory:
+
+```bash
+# Start both frontend and backend concurrently
+npm run dev
+```
+
+This will start:
+- Frontend at `http://localhost:3000`
+- Backend at `http://localhost:3001`
+
+### Individual Services
+
+```bash
+# Frontend only
+npm run dev:frontend
+
+# Backend only  
+npm run dev:backend
+```
+
+## API Endpoints
+
+### Backend API
+
+- `GET /health` - Health check endpoint
+- `POST /api/chat/generate` - Generate explanation for a topic
+
+Example request:
+```bash
+curl -X POST http://localhost:3001/api/chat/generate \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "How does photosynthesis work?"}'
+```
+
+## Features
+
+### Current Implementation
+
+- ✅ Modern, responsive landing page
+- ✅ Topic input with validation
+- ✅ OpenAI-powered explanations in Peter Griffin's style
+- ✅ Loading states and error handling
+- ✅ Monorepo structure with workspace management
+
+### Future Features
+
+- 🔄 Video generation with Subway Surfers/Minecraft backgrounds
+- 🔄 Stewie Griffin character integration
+- 🔄 Video export and sharing
+- 🔄 User authentication and history
+- 🔄 Advanced video customization options
+
+## Technology Stack
+
+### Frontend
+- Next.js 15
+- React 19
+- TypeScript
+- Tailwind CSS 4
+
+### Backend
+- Express.js
+- TypeScript
+- OpenAI API
+- CORS & Helmet for security
+
+## Development
+
+### Project Scripts
+
+```bash
+# Development
+npm run dev                 # Start both services
+npm run dev:frontend       # Frontend only
+npm run dev:backend        # Backend only
+
+# Building
+npm run build              # Build both services
+npm run build:frontend     # Frontend only
+npm run build:backend      # Backend only
+
+# Installation
+npm run install:all        # Install all dependencies
+```
+
+### Environment Variables
+
+#### Backend (.env)
+- `PORT` - Backend server port (default: 3001)
+- `OPENAI_API_KEY` - Your OpenAI API key (required)
+- `FRONTEND_URL` - Frontend URL for CORS (default: http://localhost:3000)
+- `NODE_ENV` - Environment (development/production)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+This project is private and proprietary.

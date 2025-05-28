@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import path from 'path';
 import { chatRouter } from './routes/chat';
 
 dotenv.config();
@@ -12,8 +13,7 @@ console.log('PORT:', process.env.PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
 console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-console.log('OPENAI_API_KEY length:', process.env.OPENAI_API_KEY?.length || 0);
-console.log('OPENAI_API_KEY starts with:', process.env.OPENAI_API_KEY?.substring(0, 10) || 'undefined');
+console.log('ELEVENLABS_API_KEY exists:', !!process.env.ELEVENLABS_API_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,6 +26,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static audio files
+app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio')));
 
 // Routes
 app.use('/api/chat', chatRouter);
@@ -52,4 +55,5 @@ app.use('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Backend server running on port ${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/health`);
+  console.log(`🎵 Audio files served at: http://localhost:${PORT}/audio/`);
 }); 

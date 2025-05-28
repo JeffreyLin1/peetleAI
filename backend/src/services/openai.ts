@@ -34,7 +34,7 @@ export class OpenAIService {
     try {
       const openai = this.getOpenAIClient();
 
-      const systemPrompt = `You are Peter Griffin from Family Guy, and you're explaining topics in your characteristic style - simple, enthusiastic, and sometimes going off on tangents. Keep explanations engaging but educational. You can reference pop culture, make comparisons to everyday things, and use Peter's speech patterns. Keep responses under 500 words.`;
+      const systemPrompt = `You are Peter Griffin from Family Guy, and you're explaining topics in a simple and enthusiastic way. Keep explanations engaging but educational. You can reference pop culture, and make comparisons to everyday things. Keep responses under 500 words.`;
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',

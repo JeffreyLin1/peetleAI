@@ -1,5 +1,5 @@
 # Next.js specific ignores
-.next/
+/.next/
 out/
 
 # Build outputs

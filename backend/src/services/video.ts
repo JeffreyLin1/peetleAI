@@ -239,8 +239,16 @@ export class VideoService {
       
       if (!fs.existsSync(this.peterImagePath) || !fs.existsSync(this.stewieImagePath)) {
         console.warn('Character images not found, creating video without characters');
+        console.log('Peter image exists:', fs.existsSync(this.peterImagePath), 'Path:', this.peterImagePath);
+        console.log('Stewie image exists:', fs.existsSync(this.stewieImagePath), 'Path:', this.stewieImagePath);
         return this.createDialogueVideoWithoutCharacters(audioPath, srtPath, outputPath);
       }
+      
+      console.log('✅ All files found:');
+      console.log('  Background video:', this.backgroundVideoPath);
+      console.log('  Peter image:', this.peterImagePath);
+      console.log('  Stewie image:', this.stewieImagePath);
+      console.log('  SRT file:', srtPath);
       
       // Get the duration of the audio to match the background video length
       const audioDuration = await this.getAudioDuration(audioPath);
@@ -248,6 +256,11 @@ export class VideoService {
       
       // Parse subtitle timing to know when each character speaks
       const characterTimings = await this.parseSubtitleTimings(srtPath);
+      
+      console.log('🎭 Character timings parsed:', characterTimings.length);
+      characterTimings.forEach((timing, index) => {
+        console.log(`  ${index}: ${timing.speaker} speaks from ${timing.start.toFixed(2)}s to ${timing.end.toFixed(2)}s`);
+      });
       
       // Escape the subtitle path for FFmpeg
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
@@ -258,16 +271,20 @@ export class VideoService {
       // Create character overlay filters based on dialogue timing
       const characterFilters = this.createCharacterOverlayFilters(characterTimings, audioDuration);
       
-      console.log('🎭 Character timings:', characterTimings.length);
-      console.log('🎬 Character filters:', characterFilters);
+      console.log('🎬 Character filters generated:', characterFilters ? 'YES' : 'NO');
+      if (characterFilters) {
+        console.log('Character filters content:', characterFilters);
+      }
       
       if (characterFilters) {
         // Add character overlays and get the final video stream
         const finalLabel = characterFilters.match(/\[overlay_\d+\]$/)?.[0] || '[bg]';
         filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=40,Bold=1'[v]`;
+        console.log('Final label extracted:', finalLabel);
       } else {
         // No character overlays, just add subtitles to background
         filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=40,Bold=1\'[v]';
+        console.log('⚠️ No character filters - using background only');
       }
       
       console.log('🎥 Final filter complex:', filterComplex);
@@ -275,7 +292,8 @@ export class VideoService {
       // FFmpeg command with background video, character overlays, and subtitles
       const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -i "${this.peterImagePath}" -i "${this.stewieImagePath}" -filter_complex "${filterComplex}" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
       
-      console.log('Running FFmpeg character dialogue command:', ffmpegCommand);
+      console.log('🚀 Running FFmpeg character dialogue command:');
+      console.log(ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       
       if (stderr) console.log('FFmpeg character dialogue stderr:', stderr);
@@ -302,16 +320,26 @@ export class VideoService {
 
   private async parseSubtitleTimings(srtPath: string): Promise<{ speaker: string; start: number; end: number }[]> {
     try {
+      console.log('📄 Parsing subtitle file:', srtPath);
       const srtContent = fs.readFileSync(srtPath, 'utf8');
+      console.log('📄 SRT content length:', srtContent.length);
+      console.log('📄 SRT content preview:', srtContent.substring(0, 200) + '...');
+      
       const timings: { speaker: string; start: number; end: number }[] = [];
       
       const blocks = srtContent.split('\n\n').filter(block => block.trim());
+      console.log('📄 SRT blocks found:', blocks.length);
       
       for (const block of blocks) {
         const lines = block.split('\n');
+        console.log('📄 Processing block with', lines.length, 'lines:', lines);
+        
         if (lines.length >= 3) {
           const timeLine = lines[1];
           const textLine = lines[2];
+          
+          console.log('📄 Time line:', timeLine);
+          console.log('📄 Text line:', textLine);
           
           // Parse time format: 00:00:00,000 --> 00:00:05,000
           const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})/);
@@ -319,19 +347,27 @@ export class VideoService {
             const startTime = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 1000;
             const endTime = parseInt(timeMatch[5]) * 3600 + parseInt(timeMatch[6]) * 60 + parseInt(timeMatch[7]) + parseInt(timeMatch[8]) / 1000;
             
+            console.log('📄 Parsed times:', startTime, 'to', endTime);
+            
             // Extract speaker from text (format: "Peter: text" or "Stewie: text")
             const speakerMatch = textLine.match(/^(Peter|Stewie):/);
             if (speakerMatch) {
+              console.log('📄 Speaker found:', speakerMatch[1]);
               timings.push({
                 speaker: speakerMatch[1],
                 start: startTime,
                 end: endTime
               });
+            } else {
+              console.log('📄 No speaker match found in:', textLine);
             }
+          } else {
+            console.log('📄 No time match found in:', timeLine);
           }
         }
       }
       
+      console.log('📄 Final timings array:', timings);
       return timings;
     } catch (error) {
       console.error('Error parsing subtitle timings:', error);
@@ -340,32 +376,97 @@ export class VideoService {
   }
 
   private createCharacterOverlayFilters(timings: { speaker: string; start: number; end: number }[], totalDuration: number): string {
+    console.log('🎬 Creating character overlay filters...');
+    console.log('🎬 Input timings:', timings);
+    console.log('🎬 Total duration:', totalDuration);
+    
     if (timings.length === 0) {
+      console.log('🎬 No timings provided, returning empty filters');
       return '';
     }
+    
+    // Animation parameters
+    const slideAnimationDuration = 0.4; // Animation duration
+    const slideInEarly = 0.2; // Slide in 0.3 seconds before dialogue starts
+    const slideOutLate = 0.6; // Slide out 0.3 seconds after dialogue ends
     
     let filters = '';
     let currentInput = '[bg]';
     
-    // Create separate scaled versions for each overlay to avoid input reuse
+    // Process each timing individually with eased animations
+    // Each overlay gets its own scaled version to avoid input conflicts
     for (let i = 0; i < timings.length; i++) {
       const timing = timings[i];
+      console.log(`🎬 Processing timing ${i}: ${timing.speaker} from ${timing.start} to ${timing.end}`);
       
-      if (timing.speaker === 'Peter') {
-        // Create a fresh scaled version of Peter for this overlay
-        filters += `[2:v]scale=400:400:force_original_aspect_ratio=decrease[peter_${i}];`;
-        filters += `${currentInput}[peter_${i}]overlay=800:250:enable='between(t,${timing.start},${timing.end})'[overlay_${i}];`;
-        currentInput = `[overlay_${i}]`;
-      } else if (timing.speaker === 'Stewie') {
-        // Create a fresh scaled version of Stewie for this overlay
+      // Adjust timing for early slide-in and late slide-out
+      const animationStart = Math.max(0, timing.start - slideInEarly); // Don't go below 0
+      const animationEnd = timing.end + slideOutLate;
+      const slideInEnd = animationStart + slideAnimationDuration;
+      const slideOutStart = animationEnd - slideAnimationDuration;
+      
+      console.log(`🎬 Animation timing ${i}: starts at ${animationStart.toFixed(2)}s, ends at ${animationEnd.toFixed(2)}s`);
+      
+      if (timing.speaker === 'Stewie') {
+        // Create a unique scaled version for this specific overlay
         filters += `[3:v]scale=400:400:force_original_aspect_ratio=decrease[stewie_${i}];`;
-        filters += `${currentInput}[stewie_${i}]overlay=80:250:enable='between(t,${timing.start},${timing.end})'[overlay_${i}];`;
+        
+        // Stewie slides from left: x goes from -400 to 80 with easing
+        let xExpression;
+        
+        if (slideOutStart <= slideInEnd) {
+          // Short dialogue - just slide in with easing and stay
+          // Using ease-out function: 1 - (1-t)^3 for smooth deceleration
+          const progress = `min(1,(t-${animationStart})/${slideAnimationDuration})`;
+          const easedProgress = `(1-pow(1-${progress},3))`;
+          xExpression = `if(between(t,${animationStart},${animationEnd}),-400+480*${easedProgress},-400)`;
+        } else {
+          // Full animation: slide in with easing, stay, slide out with easing
+          const slideInProgress = `(t-${animationStart})/${slideAnimationDuration}`;
+          const slideInEased = `(1-pow(1-${slideInProgress},3))`;
+          const slideOutProgress = `(t-${slideOutStart})/${slideAnimationDuration}`;
+          const slideOutEased = `(1-pow(1-${slideOutProgress},3))`;
+          
+          xExpression = `if(between(t,${animationStart},${slideInEnd}),-400+480*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),80,if(between(t,${slideOutStart},${animationEnd}),80-480*${slideOutEased},-400)))`;
+        }
+        
+        filters += `${currentInput}[stewie_${i}]overlay='${xExpression}':250:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
         currentInput = `[overlay_${i}]`;
+        console.log(`🎬 Stewie eased overlay ${i}: ${xExpression}`);
+        
+      } else if (timing.speaker === 'Peter') {
+        // Create a unique scaled version for this specific overlay
+        filters += `[2:v]scale=400:400:force_original_aspect_ratio=decrease[peter_${i}];`;
+        
+        // Peter slides from right: x goes from 1280 to 800 with easing
+        let xExpression;
+        
+        if (slideOutStart <= slideInEnd) {
+          // Short dialogue - just slide in with easing and stay
+          // Using ease-out function: 1 - (1-t)^3 for smooth deceleration
+          const progress = `min(1,(t-${animationStart})/${slideAnimationDuration})`;
+          const easedProgress = `(1-pow(1-${progress},3))`;
+          xExpression = `if(between(t,${animationStart},${animationEnd}),1280-480*${easedProgress},1280)`;
+        } else {
+          // Full animation: slide in with easing, stay, slide out with easing
+          const slideInProgress = `(t-${animationStart})/${slideAnimationDuration}`;
+          const slideInEased = `(1-pow(1-${slideInProgress},3))`;
+          const slideOutProgress = `(t-${slideOutStart})/${slideAnimationDuration}`;
+          const slideOutEased = `(1-pow(1-${slideOutProgress},3))`;
+          
+          xExpression = `if(between(t,${animationStart},${slideInEnd}),1280-480*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),800,if(between(t,${slideOutStart},${animationEnd}),800+480*${slideOutEased},1280)))`;
+        }
+        
+        filters += `${currentInput}[peter_${i}]overlay='${xExpression}':250:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
+        currentInput = `[overlay_${i}]`;
+        console.log(`🎬 Peter eased overlay ${i}: ${xExpression}`);
       }
     }
     
     // Return the filters without the trailing semicolon
-    return filters.slice(0, -1);
+    const finalFilters = filters.slice(0, -1);
+    console.log('🎬 Final eased overlay filters generated:', finalFilters);
+    return finalFilters;
   }
 
   private async createDialogueVideoWithoutCharacters(audioPath: string, srtPath: string, outputPath: string): Promise<void> {

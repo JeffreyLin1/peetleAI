@@ -182,30 +182,6 @@ export default function Home() {
               {/* Video Player */}
               {videoUrl && (
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-blue-700 font-medium">
-                      🎥 Your Peter & Stewie Video is Ready!
-                    </p>
-                    <div className="flex gap-2">
-                      <a 
-                        href={videoUrl} 
-                        download 
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        📥 Download Video
-                      </a>
-                      {fallbackVideoUrl && (
-                        <a 
-                          href={fallbackVideoUrl} 
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          🔗 Direct Link
-                        </a>
-                      )}
-                    </div>
-                  </div>
                   <video 
                     key={videoUrl}
                     controls 

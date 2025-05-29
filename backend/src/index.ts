@@ -13,6 +13,7 @@ console.log('🔧 Environment check:');
 console.log('PORT:', process.env.PORT);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
+console.log('USE_TEST_AUDIO:', process.env.USE_TEST_AUDIO);
 console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
 console.log('ELEVENLABS_API_KEY exists:', !!process.env.ELEVENLABS_API_KEY);
 
@@ -45,9 +46,13 @@ app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio')));
 
 // Serve video files with proper headers for browser compatibility
 app.use('/videos', express.static(path.join(process.cwd(), 'public', 'videos'), {
-  setHeaders: (res, path) => {
-    if (path.endsWith('.mp4')) {
-      console.log('Serving video file:', path);
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.mp4')) {
+      // Only log once per video file, not every range request
+      const filename = path.basename(filePath);
+      if (!res.headersSent) {
+        console.log('📹 Serving video:', filename);
+      }
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'no-cache');

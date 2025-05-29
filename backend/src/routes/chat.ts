@@ -1,28 +1,35 @@
 import express from 'express';
 import { OpenAIService } from '../services/openai';
-import { ElevenLabsService, DialogueLine } from '../services/elevenlabs';
+import { ElevenLabsService, DialogueLine } from '../services';
 
 const router = express.Router();
-const openaiService = new OpenAIService();
+const testMode = process.env.USE_TEST_AUDIO === 'true';
 
 // POST /api/chat/generate
 router.post('/generate', async (req, res) => {
   try {
     const { topic } = req.body;
 
-    if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
-      return res.status(400).json({ 
-        error: 'Topic is required and must be a non-empty string' 
-      });
+    if (!testMode) {
+      // Normal validation for live mode
+      if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
+        return res.status(400).json({ 
+          error: 'Topic is required and must be a non-empty string' 
+        });
+      }
+
+      if (topic.length > 1000) {
+        return res.status(400).json({ 
+          error: 'Topic is too long. Please keep it under 1000 characters.' 
+        });
+      }
     }
 
-    if (topic.length > 1000) {
-      return res.status(400).json({ 
-        error: 'Topic is too long. Please keep it under 1000 characters.' 
-      });
-    }
-
-    const response = await openaiService.generateResponse(topic.trim());
+    // Create OpenAI service instance when needed
+    const openaiService = new OpenAIService();
+    
+    // In test mode, topic is ignored but we still generate the response
+    const response = await openaiService.generateResponse(testMode ? 'test' : topic.trim());
     
     res.json({
       success: true,

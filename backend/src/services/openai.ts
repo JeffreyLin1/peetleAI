@@ -1,4 +1,6 @@
 import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -22,6 +24,13 @@ export interface ChatResponse {
 
 export class OpenAIService {
   private openai: OpenAI | null = null;
+  private testMode: boolean;
+  private testScriptPath = path.join(process.cwd(), 'public', 'test_script', 'script.txt');
+
+  constructor() {
+    this.testMode = process.env.USE_TEST_AUDIO === 'true';
+    console.log(`OpenAI Service initialized in ${this.testMode ? 'TEST' : 'LIVE'} mode`);
+  }
 
   private getOpenAIClient(): OpenAI {
     if (!this.openai) {
@@ -38,6 +47,10 @@ export class OpenAIService {
 
   async generateResponse(topic: string): Promise<ChatResponse> {
     try {
+      if (this.testMode) {
+        return this.generateTestResponse(topic);
+      }
+
       const openai = this.getOpenAIClient();
 
       const systemPrompt = `You are creating a dialogue between Peter Griffin and Stewie Griffin from Family Guy. 
@@ -87,6 +100,47 @@ Keep the total response under 400 words.`;
     } catch (error) {
       console.error('OpenAI API error:', error);
       throw new Error('Failed to generate response from OpenAI');
+    }
+  }
+
+  private generateTestResponse(topic: string): ChatResponse {
+    console.log(`🧪 Using test dialogue from file (ignoring topic: "${topic}")`);
+    console.log(`📁 Test script path: ${this.testScriptPath}`);
+    
+    try {
+      // Load the test script from file
+      if (!fs.existsSync(this.testScriptPath)) {
+        console.error(`❌ Test script file not found: ${this.testScriptPath}`);
+        throw new Error(`Test script file not found: ${this.testScriptPath}`);
+      }
+      
+      console.log(`✅ Test script file exists`);
+      const testMessage = fs.readFileSync(this.testScriptPath, 'utf8').trim();
+      console.log(`📄 Loaded test message (${testMessage.length} characters)`);
+      
+      // Parse the dialogue from the file
+      const testDialogue = this.parseDialogue(testMessage);
+      
+      if (testDialogue.length === 0) {
+        console.error(`❌ No valid dialogue found in test script file`);
+        throw new Error('No valid dialogue found in test script file');
+      }
+      
+      console.log(`✅ Loaded test dialogue with ${testDialogue.length} lines`);
+      console.log(`🎭 First line: ${testDialogue[0].speaker}: ${testDialogue[0].text.substring(0, 50)}...`);
+      
+      return {
+        message: testMessage,
+        dialogue: testDialogue,
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error loading test script:', error);
+      throw new Error(`Failed to load test dialogue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

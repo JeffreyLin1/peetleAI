@@ -109,14 +109,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Dot pattern background */}
-      <div className="absolute inset-0 opacity-40" style={{
+      {/* Dot pattern background - fixed to always cover viewport */}
+      <div className="fixed inset-0 opacity-40 pointer-events-none" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23374151' fill-opacity='0.4'%3E%3Ccircle cx='10' cy='10' r='2'/%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/svg%3E")`
       }}></div>
       
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 sm:px-6 lg:px-8">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
+      <div className="relative z-10 px-4 sm:px-6 lg:px-8">
+        {/* Hero Section - Centered when no video, top-aligned when video present */}
+        <div className={`text-center ${videoUrl ? 'pt-16 pb-8' : 'pt-32 pb-12'}`}>
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 mb-6 font-[var(--font-rubik)]">
             <span className="text-yellow-400">
               Peetle
@@ -128,8 +128,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Main Input Section */}
-        <div className="w-full max-w-4xl mx-auto">
+        {/* Main Content Section */}
+        <div className={`w-full max-w-4xl mx-auto pb-16 ${!videoUrl ? 'transform -translate-y-8' : ''}`}>
           <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-yellow-200/60">
             <div className="space-y-6">
               <div>

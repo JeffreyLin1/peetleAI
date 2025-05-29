@@ -151,7 +151,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with background video
-      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=50,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=80,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
       
       console.log('Running FFmpeg single voice background command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -195,8 +195,8 @@ export class VideoService {
       // Escape the subtitle path for FFmpeg
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
-      // FFmpeg command with black background (original method)
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=40'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      // FFmpeg command with black background (9:16 format)
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=60'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
       
       console.log('Running FFmpeg single voice fallback command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -266,7 +266,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // Build the complete filter complex
-      let filterComplex = '[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setpts=PTS-STARTPTS[bg];';
+      let filterComplex = '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];';
       
       // Create character overlay filters based on dialogue timing
       const characterFilters = this.createCharacterOverlayFilters(characterTimings, audioDuration);
@@ -279,11 +279,11 @@ export class VideoService {
       if (characterFilters) {
         // Add character overlays and get the final video stream
         const finalLabel = characterFilters.match(/\[overlay_\d+\]$/)?.[0] || '[bg]';
-        filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=40,Bold=1'[v]`;
+        filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=60,Bold=1'[v]`;
         console.log('Final label extracted:', finalLabel);
       } else {
         // No character overlays, just add subtitles to background
-        filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=18,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=40,Bold=1\'[v]';
+        filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=60,Bold=1\'[v]';
         console.log('⚠️ No character filters - using background only');
       }
       
@@ -386,7 +386,7 @@ export class VideoService {
     }
     
     // Animation parameters
-    const slideAnimationDuration = 0.4; // Animation duration
+    const slideAnimationDuration = 0.8; // Increased duration for more obvious easing
     const slideInEarly = 0.2; // Slide in 0.3 seconds before dialogue starts
     const slideOutLate = 0.6; // Slide out 0.3 seconds after dialogue ends
     
@@ -408,56 +408,58 @@ export class VideoService {
       console.log(`🎬 Animation timing ${i}: starts at ${animationStart.toFixed(2)}s, ends at ${animationEnd.toFixed(2)}s`);
       
       if (timing.speaker === 'Stewie') {
-        // Create a unique scaled version for this specific overlay
-        filters += `[3:v]scale=400:400:force_original_aspect_ratio=decrease[stewie_${i}];`;
+        // Create a unique scaled version for this specific overlay (positioned higher up)
+        filters += `[3:v]scale=600:600:force_original_aspect_ratio=decrease[stewie_${i}];`;
         
-        // Stewie slides from left: x goes from -400 to 80 with easing
+        // Stewie slides from left: x goes from -600 to 50 with easing (adjusted for 1080 width)
         let xExpression;
         
         if (slideOutStart <= slideInEnd) {
           // Short dialogue - just slide in with easing and stay
-          // Using ease-out function: 1 - (1-t)^3 for smooth deceleration
+          // Using stronger ease-out function: 1 - (1-t)^4 for more obvious deceleration
           const progress = `min(1,(t-${animationStart})/${slideAnimationDuration})`;
-          const easedProgress = `(1-pow(1-${progress},3))`;
-          xExpression = `if(between(t,${animationStart},${animationEnd}),-400+480*${easedProgress},-400)`;
+          const easedProgress = `(1-pow(1-${progress},4))`;
+          xExpression = `if(between(t,${animationStart},${animationEnd}),-600+650*${easedProgress},-600)`;
         } else {
           // Full animation: slide in with easing, stay, slide out with easing
           const slideInProgress = `(t-${animationStart})/${slideAnimationDuration}`;
-          const slideInEased = `(1-pow(1-${slideInProgress},3))`;
+          const slideInEased = `(1-pow(1-${slideInProgress},4))`;
           const slideOutProgress = `(t-${slideOutStart})/${slideAnimationDuration}`;
-          const slideOutEased = `(1-pow(1-${slideOutProgress},3))`;
+          const slideOutEased = `(1-pow(1-${slideOutProgress},4))`;
           
-          xExpression = `if(between(t,${animationStart},${slideInEnd}),-400+480*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),80,if(between(t,${slideOutStart},${animationEnd}),80-480*${slideOutEased},-400)))`;
+          xExpression = `if(between(t,${animationStart},${slideInEnd}),-600+650*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),50,if(between(t,${slideOutStart},${animationEnd}),50-650*${slideOutEased},-600)))`;
         }
         
-        filters += `${currentInput}[stewie_${i}]overlay='${xExpression}':250:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
+        // Positioned higher up on screen for 9:16 format (y=1200 instead of 1420)
+        filters += `${currentInput}[stewie_${i}]overlay='${xExpression}':1200:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
         currentInput = `[overlay_${i}]`;
         console.log(`🎬 Stewie eased overlay ${i}: ${xExpression}`);
         
       } else if (timing.speaker === 'Peter') {
-        // Create a unique scaled version for this specific overlay
-        filters += `[2:v]scale=400:400:force_original_aspect_ratio=decrease[peter_${i}];`;
+        // Create a unique scaled version for this specific overlay (extra large size for Peter)
+        filters += `[2:v]scale=1600:1600:force_original_aspect_ratio=decrease[peter_${i}];`;
         
-        // Peter slides from right: x goes from 1280 to 800 with easing
+        // Peter slides from right: x goes from 1080 to 200 with easing (not going too far left)
         let xExpression;
         
         if (slideOutStart <= slideInEnd) {
           // Short dialogue - just slide in with easing and stay
-          // Using ease-out function: 1 - (1-t)^3 for smooth deceleration
+          // Using stronger ease-out function: 1 - (1-t)^4 for more obvious deceleration
           const progress = `min(1,(t-${animationStart})/${slideAnimationDuration})`;
-          const easedProgress = `(1-pow(1-${progress},3))`;
-          xExpression = `if(between(t,${animationStart},${animationEnd}),1280-480*${easedProgress},1280)`;
+          const easedProgress = `(1-pow(1-${progress},4))`;
+          xExpression = `if(between(t,${animationStart},${animationEnd}),1080-1060*${easedProgress},1080)`;
         } else {
           // Full animation: slide in with easing, stay, slide out with easing
           const slideInProgress = `(t-${animationStart})/${slideAnimationDuration}`;
-          const slideInEased = `(1-pow(1-${slideInProgress},3))`;
+          const slideInEased = `(1-pow(1-${slideInProgress},4))`;
           const slideOutProgress = `(t-${slideOutStart})/${slideAnimationDuration}`;
-          const slideOutEased = `(1-pow(1-${slideOutProgress},3))`;
+          const slideOutEased = `(1-pow(1-${slideOutProgress},4))`;
           
-          xExpression = `if(between(t,${animationStart},${slideInEnd}),1280-480*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),800,if(between(t,${slideOutStart},${animationEnd}),800+480*${slideOutEased},1280)))`;
+          xExpression = `if(between(t,${animationStart},${slideInEnd}),1080-1060*${slideInEased},if(between(t,${slideInEnd},${slideOutStart}),20,if(between(t,${slideOutStart},${animationEnd}),20+1060*${slideOutEased},1080)))`;
         }
         
-        filters += `${currentInput}[peter_${i}]overlay='${xExpression}':250:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
+        // Positioned at bottom of screen for 9:16 format (y=520 for extra large Peter)
+        filters += `${currentInput}[peter_${i}]overlay='${xExpression}':520:enable='between(t,${animationStart},${animationEnd})'[overlay_${i}];`;
         currentInput = `[overlay_${i}]`;
         console.log(`🎬 Peter eased overlay ${i}: ${xExpression}`);
       }
@@ -484,7 +486,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command without character overlays
-      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=50,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=80,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
       
       console.log('Running FFmpeg dialogue without characters command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -515,8 +517,8 @@ export class VideoService {
       // Escape the subtitle path for FFmpeg
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
-      // Original FFmpeg command with black background
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=16,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=40'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      // FFmpeg command with black background (9:16 format)
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=60'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
       
       console.log('Running FFmpeg fallback command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);

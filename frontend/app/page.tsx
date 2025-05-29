@@ -182,38 +182,41 @@ export default function Home() {
               {/* Video Player */}
               {videoUrl && (
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <video 
-                    key={videoUrl}
-                    controls 
-                    className="w-full rounded-lg"
-                    preload="metadata"
-                    onError={(e) => {
-                      const target = e.target as HTMLVideoElement;
-                      const error = target.error;
-                      console.error('Video playback error details:', {
-                        code: error?.code,
-                        message: error?.message,
-                        networkState: target.networkState,
-                        readyState: target.readyState,
-                        src: target.src
-                      });
-                      
-                      if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
-                        console.log('Trying fallback URL:', fallbackVideoUrl);
-                        target.src = fallbackVideoUrl;
-                        target.load();
-                      } else {
-                        setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
-                      }
-                    }}
-                    onLoadStart={() => console.log('Video load started')}
-                    onLoadedMetadata={() => console.log('Video metadata loaded')}
-                    onCanPlay={() => console.log('Video can play')}
-                    onLoadedData={() => console.log('Video data loaded')}
-                  >
-                    <source src={videoUrl} type="video/mp4" />
-                    <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
-                  </video>
+                  <div className="flex justify-center">
+                    <video 
+                      key={videoUrl}
+                      controls 
+                      className="max-w-sm w-full rounded-lg shadow-lg"
+                      style={{ aspectRatio: '9/16' }}
+                      preload="metadata"
+                      onError={(e) => {
+                        const target = e.target as HTMLVideoElement;
+                        const error = target.error;
+                        console.error('Video playback error details:', {
+                          code: error?.code,
+                          message: error?.message,
+                          networkState: target.networkState,
+                          readyState: target.readyState,
+                          src: target.src
+                        });
+                        
+                        if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
+                          console.log('Trying fallback URL:', fallbackVideoUrl);
+                          target.src = fallbackVideoUrl;
+                          target.load();
+                        } else {
+                          setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
+                        }
+                      }}
+                      onLoadStart={() => console.log('Video load started')}
+                      onLoadedMetadata={() => console.log('Video metadata loaded')}
+                      onCanPlay={() => console.log('Video can play')}
+                      onLoadedData={() => console.log('Video data loaded')}
+                    >
+                      <source src={videoUrl} type="video/mp4" />
+                      <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
+                    </video>
+                  </div>
                 </div>
               )}
             </div>

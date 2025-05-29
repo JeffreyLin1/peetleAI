@@ -301,10 +301,20 @@ export class ElevenLabsService {
       // Create video with combined audio and dialogue subtitles using VideoService
       const videoFilename = `dialogue_video_${timestamp}.mp4`;
       const videoPath = path.join(this.videoService['videoDir'], videoFilename);
+      
+      // Prepare dialogue segments for Whisper transcription
+      const dialogueSegments = subtitleSegments.map(segment => ({
+        start: segment.start,
+        end: segment.end,
+        speaker: segment.speaker || 'Unknown',
+        text: segment.text
+      }));
+      
       const videoResponse = await this.videoService.createVideoFromAudio({
         audioPath: combinedAudioPath,
         outputPath: videoPath,
-        subtitleSegments
+        useWordByWordCaptions: true,
+        dialogueSegments
       });
       
       // Clean up temporary files (but keep test files)
@@ -374,10 +384,20 @@ export class ElevenLabsService {
       // Create video using VideoService
       const videoFilename = `dialogue_video_${timestamp}.mp4`;
       const videoPath = path.join(this.videoService['videoDir'], videoFilename);
+      
+      // Prepare dialogue segments for Whisper transcription
+      const dialogueSegments = subtitleSegments.map(segment => ({
+        start: segment.start,
+        end: segment.end,
+        speaker: segment.speaker || 'Unknown',
+        text: segment.text
+      }));
+      
       const videoResponse = await this.videoService.createVideoFromAudio({
         audioPath: combinedAudioPath,
         outputPath: videoPath,
-        subtitleSegments
+        useWordByWordCaptions: true,
+        dialogueSegments
       });
       
       // Clean up working files

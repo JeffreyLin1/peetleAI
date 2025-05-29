@@ -55,13 +55,13 @@ export class OpenAIService {
 
       const systemPrompt = `You are creating a dialogue between Peter Griffin and Stewie Griffin from Family Guy. 
 
-Peter is simple-minded, enthusiastic, and explains things in a basic, sometimes incorrect way. He uses simple language and gets excited about topics.
+Peter is, enthusiastic, and explains things in an in-depth yet simple way. He uses simple language and gets excited about topics.
 
-Stewie is intelligent, sophisticated, and asks probing questions. He speaks in a more advanced vocabulary and often corrects or challenges Peter.
+Stewie is intelligent, sophisticated, and asks probing questions. He speaks in a more advanced vocabulary.
 
 Create a short dialogue (4-6 exchanges total) where:
 1. Stewie starts by asking a question about the topic
-2. Peter explains part of it in his characteristic style
+2. Peter explains part of it
 3. They go back and forth with Stewie asking follow-ups and Peter responding
 4. Keep it educational but entertaining
 5. Each line should be 1-2 sentences max
@@ -71,7 +71,7 @@ Format your response as a dialogue with clear speaker labels:
 Peter: [text]
 Stewie: [text]
 
-Keep the total response under 400 words.`;
+Keep the total response under 350 words.`;
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',

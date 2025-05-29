@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { WhisperService, type WhisperResponse } from './whisper';
 
 const execAsync = promisify(exec);
 
@@ -10,6 +11,8 @@ export interface VideoGenerationOptions {
   text?: string;
   outputPath: string;
   subtitleSegments?: SubtitleSegment[];
+  useWordByWordCaptions?: boolean;
+  dialogueSegments?: Array<{ start: number; end: number; speaker: string; text: string }>;
 }
 
 export interface SubtitleSegment {
@@ -30,19 +33,56 @@ export class VideoService {
   private backgroundVideoPath = path.join(process.cwd(), 'public', 'backgrounds', 'Minecraft.mp4');
   private peterImagePath = path.join(process.cwd(), 'public', 'characters', 'peter.png');
   private stewieImagePath = path.join(process.cwd(), 'public', 'characters', 'stewie.png');
+  private whisperService: WhisperService;
 
   constructor() {
     // Ensure video directory exists
     if (!fs.existsSync(this.videoDir)) {
       fs.mkdirSync(this.videoDir, { recursive: true });
     }
+    
+    // Initialize WhisperService
+    this.whisperService = new WhisperService();
   }
 
   async createVideoFromAudio(options: VideoGenerationOptions): Promise<VideoResponse> {
-    const { audioPath, text, outputPath, subtitleSegments } = options;
+    const { audioPath, text, outputPath, subtitleSegments, useWordByWordCaptions, dialogueSegments } = options;
     
     try {
-      if (subtitleSegments && subtitleSegments.length > 0) {
+      if (useWordByWordCaptions) {
+        // Use Whisper for word-by-word captions
+        console.log('Creating video with word-by-word captions using Whisper...');
+        
+        let whisperResponse: WhisperResponse;
+        
+        if (dialogueSegments && dialogueSegments.length > 0) {
+          // For dialogue with known speakers and timing
+          whisperResponse = await this.whisperService.transcribeDialogueAudio(audioPath, dialogueSegments);
+        } else {
+          // For single voice or unknown dialogue structure
+          whisperResponse = await this.whisperService.transcribeAudioWithWordTimestamps(audioPath);
+        }
+        
+        // Create word-by-word subtitle segments
+        const wordSubtitles = this.whisperService.createWordByWordSubtitles(whisperResponse);
+        
+        // Create SRT file with word-by-word timing
+        const srtPath = audioPath.replace('.mp3', '_words.srt');
+        this.createWordByWordSubtitleFile(wordSubtitles, srtPath);
+        
+        if (dialogueSegments && dialogueSegments.length > 0) {
+          // Create dialogue video with word-by-word subtitles
+          await this.createDialogueVideoWithSubtitles(audioPath, srtPath, outputPath);
+        } else {
+          // Create single voice video with word-by-word subtitles
+          await this.createVideoWithWordSubtitles(audioPath, srtPath, outputPath);
+        }
+        
+        // Clean up subtitle file
+        if (fs.existsSync(srtPath)) {
+          fs.unlinkSync(srtPath);
+        }
+      } else if (subtitleSegments && subtitleSegments.length > 0) {
         // Create dialogue video with character overlays
         const srtPath = audioPath.replace('.mp3', '.srt');
         this.createDialogueSubtitleFile(subtitleSegments, srtPath);
@@ -56,7 +96,7 @@ export class VideoService {
         // Create single voice video with subtitles
         await this.createVideoWithSubtitles(audioPath, text, outputPath);
       } else {
-        throw new Error('Either text or subtitleSegments must be provided');
+        throw new Error('Either text, subtitleSegments, or useWordByWordCaptions must be provided');
       }
 
       const filename = path.basename(outputPath);
@@ -122,11 +162,59 @@ export class VideoService {
     fs.writeFileSync(filePath, srtContent);
   }
 
+  private createWordByWordSubtitleFile(wordSubtitles: Array<{ start: number; end: number; text: string; speaker?: string }>, filePath: string): void {
+    let srtContent = '';
+    
+    for (let i = 0; i < wordSubtitles.length; i++) {
+      const word = wordSubtitles[i];
+      const startTimeStr = this.formatTime(word.start);
+      const endTimeStr = this.formatTime(word.end);
+      
+      // Include speaker name in subtitle for character overlay parsing
+      // We'll handle hiding it in the video rendering
+      const subtitleText = word.speaker ? `${word.speaker}: ${word.text}` : word.text;
+      
+      srtContent += `${i + 1}\n${startTimeStr} --> ${endTimeStr}\n${subtitleText}\n\n`;
+    }
+    
+    fs.writeFileSync(filePath, srtContent);
+  }
+
+  private createCleanSubtitleFile(originalSrtPath: string, cleanSrtPath: string): void {
+    try {
+      const srtContent = fs.readFileSync(originalSrtPath, 'utf8');
+      const blocks = srtContent.split('\n\n').filter(block => block.trim());
+      
+      let cleanContent = '';
+      
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        if (lines.length >= 3) {
+          const indexLine = lines[0];
+          const timeLine = lines[1];
+          const textLine = lines[2];
+          
+          // Remove speaker prefix from text line
+          const cleanText = textLine.replace(/^(Peter|Stewie):\s*/, '');
+          
+          cleanContent += `${indexLine}\n${timeLine}\n${cleanText}\n\n`;
+        }
+      }
+      
+      fs.writeFileSync(cleanSrtPath, cleanContent);
+    } catch (error) {
+      console.error('Error creating clean subtitle file:', error);
+      // Fallback: copy original file
+      fs.copyFileSync(originalSrtPath, cleanSrtPath);
+    }
+  }
+
   private formatTime(seconds: number): string {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},000`;
+    const secs = Math.floor(seconds % 60);
+    const milliseconds = Math.floor((seconds % 1) * 1000);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
   }
 
   private async createVideoWithSubtitles(audioPath: string, text: string, outputPath: string): Promise<void> {
@@ -151,7 +239,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with background video
-      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=80,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
       
       console.log('Running FFmpeg single voice background command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -196,7 +284,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with black background (9:16 format)
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=60'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
       
       console.log('Running FFmpeg single voice fallback command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -254,7 +342,7 @@ export class VideoService {
       const audioDuration = await this.getAudioDuration(audioPath);
       console.log(`Audio duration: ${audioDuration.toFixed(2)}s`);
       
-      // Parse subtitle timing to know when each character speaks
+      // Parse subtitle timing to know when each character speaks (using original file with speaker names)
       const characterTimings = await this.parseSubtitleTimings(srtPath);
       
       console.log('🎭 Character timings parsed:', characterTimings.length);
@@ -262,8 +350,12 @@ export class VideoService {
         console.log(`  ${index}: ${timing.speaker} speaks from ${timing.start.toFixed(2)}s to ${timing.end.toFixed(2)}s`);
       });
       
-      // Escape the subtitle path for FFmpeg
-      const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
+      // Create clean subtitle file without speaker names for video rendering
+      const cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
+      this.createCleanSubtitleFile(srtPath, cleanSrtPath);
+      
+      // Escape the clean subtitle path for FFmpeg
+      const escapedSrtPath = cleanSrtPath.replace(/'/g, "'\\''");
       
       // Build the complete filter complex
       let filterComplex = '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];';
@@ -279,11 +371,11 @@ export class VideoService {
       if (characterFilters) {
         // Add character overlays and get the final video stream
         const finalLabel = characterFilters.match(/\[overlay_\d+\]$/)?.[0] || '[bg]';
-        filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=60,Bold=1'[v]`;
+        filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1'[v]`;
         console.log('Final label extracted:', finalLabel);
       } else {
         // No character overlays, just add subtitles to background
-        filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=60,Bold=1\'[v]';
+        filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1\'[v]';
         console.log('⚠️ No character filters - using background only');
       }
       
@@ -310,6 +402,11 @@ export class VideoService {
       }
       
       console.log(`Character dialogue video created successfully: ${outputPath} (${stats.size} bytes)`);
+      
+      // Clean up the clean subtitle file
+      if (fs.existsSync(cleanSrtPath)) {
+        fs.unlinkSync(cleanSrtPath);
+      }
     } catch (error) {
       console.error('Error creating character dialogue video:', error);
       // Fallback to creating video without characters
@@ -326,9 +423,12 @@ export class VideoService {
       console.log('📄 SRT content preview:', srtContent.substring(0, 200) + '...');
       
       const timings: { speaker: string; start: number; end: number }[] = [];
-      
       const blocks = srtContent.split('\n\n').filter(block => block.trim());
       console.log('📄 SRT blocks found:', blocks.length);
+      
+      let currentSpeaker: string | null = null;
+      let currentSegmentStart: number | null = null;
+      let currentSegmentEnd: number | null = null;
       
       for (const block of blocks) {
         const lines = block.split('\n');
@@ -352,12 +452,31 @@ export class VideoService {
             // Extract speaker from text (format: "Peter: text" or "Stewie: text")
             const speakerMatch = textLine.match(/^(Peter|Stewie):/);
             if (speakerMatch) {
-              console.log('📄 Speaker found:', speakerMatch[1]);
-              timings.push({
-                speaker: speakerMatch[1],
-                start: startTime,
-                end: endTime
-              });
+              const speaker = speakerMatch[1];
+              console.log('📄 Speaker found:', speaker);
+              
+              // Check if this is a continuation of the same speaker or a new speaker
+              if (currentSpeaker === speaker && currentSegmentStart !== null && currentSegmentEnd !== null) {
+                // Same speaker - extend the current segment
+                currentSegmentEnd = endTime;
+                console.log('📄 Extending segment for', speaker, 'to', endTime);
+              } else {
+                // Different speaker or first segment - save previous segment if exists
+                if (currentSpeaker && currentSegmentStart !== null && currentSegmentEnd !== null) {
+                  timings.push({
+                    speaker: currentSpeaker,
+                    start: currentSegmentStart,
+                    end: currentSegmentEnd
+                  });
+                  console.log('📄 Saved segment for', currentSpeaker, 'from', currentSegmentStart, 'to', currentSegmentEnd);
+                }
+                
+                // Start new segment
+                currentSpeaker = speaker;
+                currentSegmentStart = startTime;
+                currentSegmentEnd = endTime;
+                console.log('📄 Starting new segment for', speaker, 'at', startTime);
+              }
             } else {
               console.log('📄 No speaker match found in:', textLine);
             }
@@ -367,7 +486,17 @@ export class VideoService {
         }
       }
       
-      console.log('📄 Final timings array:', timings);
+      // Don't forget to save the last segment
+      if (currentSpeaker && currentSegmentStart !== null && currentSegmentEnd !== null) {
+        timings.push({
+          speaker: currentSpeaker,
+          start: currentSegmentStart,
+          end: currentSegmentEnd
+        });
+        console.log('📄 Saved final segment for', currentSpeaker, 'from', currentSegmentStart, 'to', currentSegmentEnd);
+      }
+      
+      console.log('📄 Final grouped timings array:', timings);
       return timings;
     } catch (error) {
       console.error('Error parsing subtitle timings:', error);
@@ -482,11 +611,15 @@ export class VideoService {
       // Get the duration of the audio to match the background video length
       const audioDuration = await this.getAudioDuration(audioPath);
       
-      // Escape the subtitle path for FFmpeg
-      const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
+      // Create clean subtitle file without speaker names for video rendering
+      const cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
+      this.createCleanSubtitleFile(srtPath, cleanSrtPath);
+      
+      // Escape the clean subtitle path for FFmpeg
+      const escapedSrtPath = cleanSrtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command without character overlays
-      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=80,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
       
       console.log('Running FFmpeg dialogue without characters command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -504,6 +637,11 @@ export class VideoService {
       }
       
       console.log(`Dialogue video without characters created successfully: ${outputPath} (${stats.size} bytes)`);
+      
+      // Clean up the clean subtitle file
+      if (fs.existsSync(cleanSrtPath)) {
+        fs.unlinkSync(cleanSrtPath);
+      }
     } catch (error) {
       console.error('Error creating dialogue video without characters:', error);
       await this.createVideoWithoutBackground(audioPath, srtPath, outputPath);
@@ -514,11 +652,27 @@ export class VideoService {
     try {
       console.log('Creating video without background...');
       
+      // Check if this is a word-by-word subtitle file (contains speaker names)
+      let finalSrtPath = srtPath;
+      let cleanSrtPath: string | null = null;
+      
+      try {
+        const srtContent = fs.readFileSync(srtPath, 'utf8');
+        if (srtContent.includes('Peter:') || srtContent.includes('Stewie:')) {
+          // This is a word-by-word subtitle file, create clean version
+          cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
+          this.createCleanSubtitleFile(srtPath, cleanSrtPath);
+          finalSrtPath = cleanSrtPath;
+        }
+      } catch (error) {
+        console.log('Could not check subtitle content, using original file');
+      }
+      
       // Escape the subtitle path for FFmpeg
-      const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
+      const escapedSrtPath = finalSrtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with black background (9:16 format)
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=60'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
       
       console.log('Running FFmpeg fallback command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -537,9 +691,70 @@ export class VideoService {
       }
       
       console.log(`Fallback video created successfully: ${outputPath} (${stats.size} bytes)`);
+      
+      // Clean up the clean subtitle file if we created one
+      if (cleanSrtPath && fs.existsSync(cleanSrtPath)) {
+        fs.unlinkSync(cleanSrtPath);
+      }
     } catch (error) {
       console.error('Error creating fallback video:', error);
       throw new Error(`Failed to create video: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async createVideoWithWordSubtitles(audioPath: string, srtPath: string, outputPath: string): Promise<void> {
+    try {
+      console.log('Creating video with word-by-word subtitles...');
+      
+      // Check if background video exists
+      if (!fs.existsSync(this.backgroundVideoPath)) {
+        console.warn('Background video not found, creating video without background');
+        return this.createVideoWithoutBackground(audioPath, srtPath, outputPath);
+      }
+      
+      // Get the duration of the audio to match the background video length
+      const audioDuration = await this.getAudioDuration(audioPath);
+      console.log(`Audio duration: ${audioDuration.toFixed(2)}s`);
+      
+      // Create clean subtitle file without speaker names for video rendering
+      const cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
+      this.createCleanSubtitleFile(srtPath, cleanSrtPath);
+      
+      // Escape the clean subtitle path for FFmpeg
+      const escapedSrtPath = cleanSrtPath.replace(/'/g, "'\\''");
+      
+      // FFmpeg command with background video and word-by-word subtitles
+      // Using smaller font size and different positioning for word-by-word display
+      const ffmpegCommand = `ffmpeg -stream_loop -1 -i "${this.backgroundVideoPath}" -i "${audioPath}" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];[bg]subtitles='${escapedSrtPath}':force_style='Fontsize=28,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1'[v]" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+      
+      console.log('Running FFmpeg word-by-word command:', ffmpegCommand);
+      const { stdout, stderr } = await execAsync(ffmpegCommand);
+      
+      if (stderr) console.log('FFmpeg word-by-word stderr:', stderr);
+      if (stdout) console.log('FFmpeg word-by-word stdout:', stdout);
+      
+      // Verify the output file was created and has content
+      if (!fs.existsSync(outputPath)) {
+        throw new Error('Word-by-word video file was not created');
+      }
+      
+      const stats = fs.statSync(outputPath);
+      if (stats.size === 0) {
+        throw new Error('Word-by-word video file is empty');
+      }
+      
+      console.log(`Word-by-word video created successfully: ${outputPath} (${stats.size} bytes)`);
+      
+      // Clean up the clean subtitle file
+      if (fs.existsSync(cleanSrtPath)) {
+        fs.unlinkSync(cleanSrtPath);
+      }
+      
+    } catch (error) {
+      console.error('Error creating word-by-word video:', error);
+      // Fallback to creating video without background
+      console.log('Falling back to word-by-word video without background...');
+      await this.createVideoWithoutBackground(audioPath, srtPath, outputPath);
     }
   }
 

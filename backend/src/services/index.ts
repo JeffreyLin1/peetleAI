@@ -1,6 +1,7 @@
 export { ElevenLabsService } from './elevenlabs';
 export { VideoService } from './video';
 export { AudioService } from './audio';
+export { WhisperService } from './whisper';
 
 export type {
   ElevenLabsResponse,
@@ -17,4 +18,10 @@ export type {
 
 export type {
   AudioSegment
-} from './audio'; 
+} from './audio';
+
+export type {
+  WordTimestamp,
+  TranscriptionSegment,
+  WhisperResponse
+} from './whisper'; 

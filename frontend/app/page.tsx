@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { api } from '../lib/api';
+import { AuthModal } from '../components/auth/AuthModal';
 
 interface ChatResponse {
   message: string;
@@ -23,6 +26,7 @@ interface SpeechResponse {
 }
 
 export default function Home() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [topic, setTopic] = useState('');
   const [dialogue, setDialogue] = useState<DialogueLine[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,6 +36,7 @@ export default function Home() {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Track elapsed time during generation
   useEffect(() => {
@@ -55,6 +60,11 @@ export default function Home() {
   }, [isGenerating, startTime]);
 
   const handleGenerateVideo = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!topic.trim()) return;
 
     setIsGenerating(true);
@@ -67,20 +77,8 @@ export default function Home() {
     setEstimatedTimeRemaining(45);
 
     try {
-      // Step 1: Generate dialogue
-      const chatRes = await fetch('http://localhost:3001/api/chat/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ topic: topic.trim() }),
-      });
-
-      const chatData = await chatRes.json();
-
-      if (!chatRes.ok) {
-        throw new Error(chatData.error || 'Failed to generate dialogue');
-      }
+      // Step 1: Generate dialogue using authenticated API
+      const chatData = await api.chat.generate(topic.trim());
 
       if (!chatData.success || !chatData.data) {
         throw new Error('Invalid response format');
@@ -89,23 +87,11 @@ export default function Home() {
       const responseText = chatData.data.message;
       const dialogueData = chatData.data.dialogue || [];
 
-      // Step 2: Generate video with speech
-      const speechRes = await fetch('http://localhost:3001/api/chat/speak', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          text: responseText,
-          dialogue: dialogueData.length > 0 ? dialogueData : undefined
-        }),
-      });
-
-      const speechData = await speechRes.json();
-
-      if (!speechRes.ok) {
-        throw new Error(speechData.error || 'Failed to generate video');
-      }
+      // Step 2: Generate video with speech using authenticated API
+      const speechData = await api.chat.speak(
+        responseText,
+        dialogueData.length > 0 ? dialogueData : undefined
+      );
 
       if (speechData.success && speechData.data) {
         const fullVideoUrl = `http://localhost:3001${speechData.data.videoUrl}`;
@@ -137,6 +123,23 @@ export default function Home() {
     setEstimatedTimeRemaining(null);
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      handleReset(); // Clear any generated content
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-yellow-500"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Dot pattern background - fixed to always cover viewport */}
@@ -145,6 +148,21 @@ export default function Home() {
       }}></div>
       
       <div className="relative z-10 px-4 sm:px-6 lg:px-8">
+        {/* Header with user info */}
+        {user && (
+          <div className="flex justify-end pt-4">
+            <div className="flex items-center space-x-4">
+              <span className="text-gray-700">Welcome, {user.email}</span>
+              <button
+                onClick={handleSignOut}
+                className="text-gray-500 hover:text-gray-700 text-sm"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Hero Section */}
         <div className="text-center pt-16 pb-8">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 mb-6 font-[var(--font-rubik)]">
@@ -156,6 +174,11 @@ export default function Home() {
           <p className="text-xl sm:text-2xl text-gray-700 mb-4 max-w-3xl mx-auto font-[var(--font-rubik)]">
             Generate engaging videos with Peter & Stewie Griffin explanations
           </p>
+          {!user && (
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Sign in to start generating your personalized educational videos
+            </p>
+          )}
         </div>
 
         {/* Input Section */}
@@ -170,10 +193,10 @@ export default function Home() {
                   id="topic"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  placeholder="Enter a topic or question... (e.g., 'How does photosynthesis work?' or 'Explain quantum physics')"
+                  placeholder={user ? "Enter a topic or question... (e.g., 'How does photosynthesis work?' or 'Explain quantum physics')" : "Sign in to start generating videos..."}
                   className="w-full px-4 py-4 text-lg bg-white border border-yellow-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none shadow-sm"
                   rows={4}
-                  disabled={isGenerating}
+                  disabled={isGenerating || !user}
                 />
               </div>
               
@@ -181,10 +204,15 @@ export default function Home() {
                 {!isGenerating && (
                   <button
                     onClick={handleGenerateVideo}
-                    disabled={!topic.trim()}
+                    disabled={user ? !topic.trim() : false}
                     className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
                   >
-                    {topic.trim() ? 'Generate Video' : 'Enter a topic to continue'}
+                    {!user 
+                      ? 'Log In to Generate Videos' 
+                      : topic.trim() 
+                        ? 'Generate Video' 
+                        : 'Enter a topic to continue'
+                    }
                   </button>
                 )}
               </div>
@@ -200,7 +228,7 @@ export default function Home() {
         </div>
 
         {/* Video Section - Separate from input */}
-        {(isGenerating || videoUrl) && (
+        {(isGenerating || videoUrl) && user && (
           <div className="w-full max-w-4xl mx-auto pb-16">
             <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-blue-200/60">
               <div className="text-center mb-6">
@@ -273,6 +301,13 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultMode="signin"
+      />
     </div>
   );
 } 

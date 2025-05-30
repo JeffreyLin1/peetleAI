@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { chatRouter } from './routes/chat';
+import { authRouter } from './routes/auth';
 import fs from 'fs';
 
 dotenv.config();
@@ -116,6 +117,7 @@ app.get('/api/videos/test/:filename', (req, res) => {
 });
 
 // Routes
+app.use('/api/auth', authRouter);
 app.use('/api/chat', chatRouter);
 
 // Health check
@@ -137,4 +139,7 @@ app.use('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔐 Auth service: http://localhost:${PORT}/api/auth/health`);
 }); 

@@ -1,12 +1,23 @@
 import express from 'express';
 import { OpenAIService } from '../services/openai';
 import { ElevenLabsService, DialogueLine } from '../services';
+import { AuthMiddleware } from '../middleware/auth';
 
 const router = express.Router();
 const testMode = process.env.USE_TEST_AUDIO === 'true';
 
+// Lazy initialization to ensure environment variables are loaded
+let authMiddleware: AuthMiddleware;
+
+function getAuthMiddleware() {
+  if (!authMiddleware) {
+    authMiddleware = new AuthMiddleware();
+  }
+  return authMiddleware;
+}
+
 // POST /api/chat/generate
-router.post('/generate', async (req, res) => {
+router.post('/generate', (req, res, next) => getAuthMiddleware().authenticate(req, res, next), async (req, res) => {
   try {
     const { topic } = req.body;
 
@@ -33,7 +44,8 @@ router.post('/generate', async (req, res) => {
     
     res.json({
       success: true,
-      data: response
+      data: response,
+      user: req.user // Include user info in response for debugging
     });
   } catch (error) {
     res.status(500).json({ 
@@ -44,7 +56,7 @@ router.post('/generate', async (req, res) => {
 });
 
 // POST /api/chat/speak
-router.post('/speak', async (req, res) => {
+router.post('/speak', (req, res, next) => getAuthMiddleware().authenticate(req, res, next), async (req, res) => {
   try {
     const { text, dialogue } = req.body;
 
@@ -85,7 +97,8 @@ router.post('/speak', async (req, res) => {
       data: {
         videoUrl: speechResponse.video_url,
         provider: 'elevenlabs'
-      }
+      },
+      user: req.user // Include user info in response for debugging
     });
   } catch (error) {
     res.status(500).json({ 

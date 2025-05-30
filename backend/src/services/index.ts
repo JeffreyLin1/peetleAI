@@ -2,6 +2,7 @@ export { ElevenLabsService } from './elevenlabs';
 export { VideoService } from './video';
 export { AudioService } from './audio';
 export { WhisperService } from './whisper';
+export { SupabaseService } from './supabase';
 
 export type {
   ElevenLabsResponse,
@@ -24,4 +25,8 @@ export type {
   WordTimestamp,
   TranscriptionSegment,
   WhisperResponse
-} from './whisper'; 
+} from './whisper';
+
+export type {
+  User
+} from './supabase'; 

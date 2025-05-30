@@ -12,12 +12,22 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, defaultMode = 'signin' }: AuthModalProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>(defaultMode)
+  const [isVisible, setIsVisible] = useState(false)
+  const [isAnimating, setIsAnimating] = useState(false)
 
   useEffect(() => {
-    console.log('AuthModal isOpen:', isOpen)
+    if (isOpen) {
+      setIsVisible(true)
+      // Small delay to trigger the animation after the component is rendered
+      setTimeout(() => setIsAnimating(true), 10)
+    } else {
+      setIsAnimating(false)
+      // Wait for animation to complete before hiding
+      setTimeout(() => setIsVisible(false), 200)
+    }
   }, [isOpen])
 
-  if (!isOpen) return null
+  if (!isVisible) return null
 
   const handleSuccess = () => {
     console.log('Auth success, closing modal')
@@ -32,17 +42,26 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'signin' }: AuthModal
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Dot pattern background overlay */}
-      <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm" style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23374151' fill-opacity='0.2'%3E%3Ccircle cx='10' cy='10' r='2'/%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/svg%3E")`
-      }} />
+      {/* Backdrop with fade animation */}
+      <div 
+        className={`fixed inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity duration-200 ${
+          isAnimating ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23374151' fill-opacity='0.2'%3E%3Ccircle cx='10' cy='10' r='2'/%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/svg%3E")`
+        }} 
+      />
       
       <div 
         className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
         onClick={handleBackdropClick}
       >
-        {/* Modal panel */}
-        <div className="inline-block align-bottom bg-white/95 backdrop-blur-lg rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-10 border border-yellow-200/60">
+        {/* Modal panel with scale and fade animation */}
+        <div className={`inline-block align-bottom bg-white/95 backdrop-blur-lg rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all duration-200 sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-10 border border-yellow-200/60 ${
+          isAnimating 
+            ? 'opacity-100 scale-100 translate-y-0' 
+            : 'opacity-0 scale-95 translate-y-4'
+        }`}>
           <div className="bg-white/90 backdrop-blur-lg px-6 pt-6 pb-6 sm:p-8">
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
@@ -65,13 +84,13 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'signin' }: AuthModal
               </button>
             </div>
 
-            {/* Mode Toggle */}
+            {/* Mode Toggle with smooth transition */}
             <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
               <button
                 onClick={() => setMode('signin')}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
                   mode === 'signin'
-                    ? 'bg-yellow-500 text-white shadow-sm'
+                    ? 'bg-yellow-500 text-white shadow-sm transform scale-105'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -79,9 +98,9 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'signin' }: AuthModal
               </button>
               <button
                 onClick={() => setMode('signup')}
-                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
                   mode === 'signup'
-                    ? 'bg-yellow-500 text-white shadow-sm'
+                    ? 'bg-yellow-500 text-white shadow-sm transform scale-105'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -89,8 +108,10 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'signin' }: AuthModal
               </button>
             </div>
 
-            {/* Form Content */}
-            <div className="space-y-6">
+            {/* Form Content with fade transition */}
+            <div className={`space-y-6 transition-opacity duration-150 ${
+              isAnimating ? 'opacity-100' : 'opacity-0'
+            }`}>
               {mode === 'signin' ? (
                 <LoginForm
                   onSuccess={handleSuccess}

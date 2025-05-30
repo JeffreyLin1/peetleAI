@@ -28,7 +28,7 @@ export class OpenAIService {
   private testScriptPath = path.join(process.cwd(), 'public', 'test_script', 'script.txt');
 
   constructor() {
-    this.testMode = process.env.USE_TEST_AUDIO === 'true';
+    this.testMode = process.env.TEST_MODE === 'true';
   }
 
   private getOpenAIClient(): OpenAI {

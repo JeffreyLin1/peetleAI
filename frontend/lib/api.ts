@@ -93,16 +93,22 @@ export const apiClient = new ApiClient()
 
 // Convenience methods for common API calls
 export const api = {
-  // Auth endpoints
+  // Authentication endpoints
   auth: {
     me: () => apiClient.get('/api/auth/me'),
     verify: (token: string) => apiClient.post('/api/auth/verify', { token }),
   },
 
-  // Chat endpoints
-  chat: {
-    generate: (topic: string) => apiClient.post('/api/chat/generate', { topic }),
-    speak: (text: string, dialogue?: any[]) => 
-      apiClient.post('/api/chat/speak', { text, dialogue }),
+  // Content generation endpoints
+  content: {
+    generate: (topic: string) => apiClient.post('/api/content/generate', { topic }),
+  },
+
+  // Video generation and management endpoints
+  video: {
+    generate: (text: string, dialogue?: any[]) => 
+      apiClient.post('/api/video/generate', { text, dialogue }),
+    list: () => apiClient.get('/api/video/list'),
+    stream: (filename: string) => `${API_BASE_URL}/api/video/stream/${filename}`,
   },
 } 

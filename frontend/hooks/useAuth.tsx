@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useContext, createContext, ReactNode } from 'react'
-import { User } from '@supabase/supabase-js'
+import { User, AuthResponse } from '@supabase/supabase-js'
 import { authService } from '../lib/auth'
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<{ user: User | null; session: any | null }>
   signOut: () => Promise<void>
   getAccessToken: () => Promise<string | null>
 }
@@ -46,21 +46,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    setLoading(true)
     try {
       await authService.signIn(email, password)
     } catch (error) {
-      setLoading(false)
       throw error
     }
   }
 
   const signUp = async (email: string, password: string) => {
-    setLoading(true)
     try {
-      await authService.signUp(email, password)
+      return await authService.signUp(email, password)
     } catch (error) {
-      setLoading(false)
       throw error
     }
   }

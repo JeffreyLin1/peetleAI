@@ -49,7 +49,7 @@ const VOICE_CONFIG: VoiceSettings = {
 
 export class ElevenLabsService {
   private baseUrl = 'https://api.elevenlabs.io/v1';
-  private testMode = process.env.USE_TEST_AUDIO === 'true';
+  private testMode = process.env.TEST_MODE === 'true';
   private videoService: VideoService;
   private audioService: AudioService;
 

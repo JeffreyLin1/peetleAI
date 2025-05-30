@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
 import { AuthModal } from '../components/auth/AuthModal';
 
-interface ChatResponse {
+interface ContentResponse {
   message: string;
   dialogue?: DialogueLine[];
   usage?: {
@@ -20,7 +20,7 @@ interface DialogueLine {
   text: string;
 }
 
-interface SpeechResponse {
+interface VideoResponse {
   videoUrl: string;
   provider: string;
 }
@@ -77,29 +77,29 @@ export default function Home() {
     setEstimatedTimeRemaining(45);
 
     try {
-      // Step 1: Generate dialogue using authenticated API
-      const chatData = await api.chat.generate(topic.trim());
+      // Step 1: Generate dialogue content using the new content API
+      const contentData = await api.content.generate(topic.trim());
 
-      if (!chatData.success || !chatData.data) {
+      if (!contentData.success || !contentData.data) {
         throw new Error('Invalid response format');
       }
 
-      const responseText = chatData.data.message;
-      const dialogueData = chatData.data.dialogue || [];
+      const responseText = contentData.data.message;
+      const dialogueData = contentData.data.dialogue || [];
 
-      // Step 2: Generate video with speech using authenticated API
-      const speechData = await api.chat.speak(
+      // Step 2: Generate video using the new video API
+      const videoData = await api.video.generate(
         responseText,
         dialogueData.length > 0 ? dialogueData : undefined
       );
 
-      if (speechData.success && speechData.data) {
-        const fullVideoUrl = `http://localhost:3001${speechData.data.videoUrl}`;
-        const filename = speechData.data.videoUrl.split('/').pop();
-        const testVideoUrl = `http://localhost:3001/api/videos/test/${filename}`;
+      if (videoData.success && videoData.data) {
+        const fullVideoUrl = `http://localhost:3001${videoData.data.videoUrl}`;
+        const filename = videoData.data.videoUrl.split('/').pop();
+        const streamVideoUrl = api.video.stream(filename || '');
         
         setVideoUrl(fullVideoUrl);
-        setFallbackVideoUrl(testVideoUrl);
+        setFallbackVideoUrl(streamVideoUrl);
         console.log('Video file ready:', fullVideoUrl);
       } else {
         throw new Error('Invalid video response format');

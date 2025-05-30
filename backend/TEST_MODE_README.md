@@ -14,7 +14,7 @@ When `USE_TEST_AUDIO=true`:
 ## How to Use
 
 ### Step 1: Generate Test Audio Files (One Time)
-1. Make sure `USE_TEST_AUDIO` is NOT set in your `.env` file (or set to `false`)
+1. Make sure `USE_TEST_AUDIO` and `TEST_MODE` are NOT set in your `.env` file (or set to `false`)
 2. Enter "photosynthesis" as the topic (to match the test script)
 3. Generate a video normally - this will:
    - Call OpenAI API to generate dialogue
@@ -27,10 +27,15 @@ When `USE_TEST_AUDIO=true`:
    - etc.
 
 ### Step 2: Enable Test Mode
-Add this to your `backend/.env` file:
+Add either of these to your `backend/.env` file:
 ```
 USE_TEST_AUDIO=true
 ```
+OR
+```
+TEST_MODE=true
+```
+(Both variable names work for backward compatibility)
 
 ### Step 3: Test Video Generation
 Now when you generate videos:
@@ -71,9 +76,9 @@ Test mode is ideal for:
 - ⚡ **Speed** - Instant video generation
 
 ## Switching Back to Live Mode
-Remove or comment out the `USE_TEST_AUDIO` line in your `.env` file:
+Remove or comment out both test mode variables in your `.env` file:
 ```
-# USE_TEST_AUDIO=true
+# TEST_MODE=true
 ```
 
 ## Verifying Test Mode

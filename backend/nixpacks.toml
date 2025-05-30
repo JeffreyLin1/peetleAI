@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['nodejs-18_x', 'npm-9_x', 'ffmpeg-full', 'pkg-config', 'fontconfig', 'dejavu_fonts']
+nixPkgs = ['nodejs-18_x', 'npm-9_x', 'ffmpeg', 'pkg-config', 'fontconfig', 'dejavu_fonts']
 
 [phases.install]
 cmds = ['npm install']

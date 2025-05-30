@@ -276,7 +276,7 @@ export class VideoService {
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with black background (9:16 format) - using actual audio duration and memory optimization
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 4 -preset ultrafast -shortest -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 1 -preset ultrafast -shortest -y "${outputPath}"`;
       
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       
@@ -595,7 +595,7 @@ export class VideoService {
       const escapedSrtPath = finalSrtPath.replace(/'/g, "'\\''");
       
       // FFmpeg command with black background (9:16 format) - using actual audio duration and memory optimization
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 4 -preset ultrafast -shortest -y "${outputPath}"`;
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 1 -preset ultrafast -shortest -y "${outputPath}"`;
       
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       

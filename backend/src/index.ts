@@ -7,12 +7,6 @@ import path from 'path';
 // Load environment variables FIRST
 dotenv.config();
 
-// Debug: Show environment variables are loaded
-console.log('🔧 Environment variables loaded:');
-console.log(`   TEST_MODE: ${process.env.TEST_MODE}`);
-console.log(`   USE_TEST_AUDIO: ${process.env.USE_TEST_AUDIO}`);
-console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
-
 // Import routes AFTER environment variables are loaded
 import { authRouter, contentRouter, videoRouter } from './routes';
 import { sendError } from './utils/response';

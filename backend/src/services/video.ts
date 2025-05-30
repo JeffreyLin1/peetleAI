@@ -265,6 +265,9 @@ export class VideoService {
   private async createSingleVideoWithoutBackground(audioPath: string, text: string, outputPath: string): Promise<void> {
     try {
       
+      // Get the actual audio duration instead of using fixed duration
+      const audioDuration = await this.getAudioDuration(audioPath);
+      
       // Create subtitle file
       const srtPath = audioPath.replace('.mp3', '.srt');
       this.createSubtitleFile(text, srtPath);
@@ -272,8 +275,8 @@ export class VideoService {
       // Escape the subtitle path for FFmpeg
       const escapedSrtPath = srtPath.replace(/'/g, "'\\''");
       
-      // FFmpeg command with black background (9:16 format)
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      // FFmpeg command with black background (9:16 format) - using actual audio duration and memory optimization
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 4 -preset ultrafast -shortest -y "${outputPath}"`;
       
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       
@@ -570,6 +573,9 @@ export class VideoService {
   private async createVideoWithoutBackground(audioPath: string, srtPath: string, outputPath: string): Promise<void> {
     try {
       
+      // Get the actual audio duration instead of using fixed 600 seconds
+      const audioDuration = await this.getAudioDuration(audioPath);
+      
       // Check if this is a word-by-word subtitle file (contains speaker names)
       let finalSrtPath = srtPath;
       let cleanSrtPath: string | null = null;
@@ -588,8 +594,8 @@ export class VideoService {
       // Escape the subtitle path for FFmpeg
       const escapedSrtPath = finalSrtPath.replace(/'/g, "'\\''");
       
-      // FFmpeg command with black background (9:16 format)
-      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=600 -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest -y "${outputPath}"`;
+      // FFmpeg command with black background (9:16 format) - using actual audio duration and memory optimization
+      const ffmpegCommand = `ffmpeg -f lavfi -i color=c=black:s=1080x1920:d=${audioDuration} -i "${audioPath}" -vf "subtitles='${escapedSrtPath}':force_style='Fontsize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=150'" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -threads 4 -preset ultrafast -shortest -y "${outputPath}"`;
       
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       

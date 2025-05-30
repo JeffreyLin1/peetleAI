@@ -56,7 +56,6 @@ export class ElevenLabsService {
   constructor() {
     this.videoService = new VideoService();
     this.audioService = new AudioService();
-    console.log(`ElevenLabs Service initialized in ${this.testMode ? 'TEST' : 'LIVE'} mode`);
   }
 
   private getApiKey() {
@@ -73,8 +72,6 @@ export class ElevenLabsService {
     try {
       const apiKey = this.getApiKey();
       
-      console.log('Fetching available voices from ElevenLabs...');
-      
       const response = await axios.get(
         `${this.baseUrl}/voices`,
         {
@@ -85,13 +82,9 @@ export class ElevenLabsService {
         }
       );
 
-      console.log('ElevenLabs voices fetched successfully');
       return response.data.voices;
     } catch (error) {
-      console.error('Error fetching ElevenLabs voices:', error);
       if (axios.isAxiosError(error)) {
-        console.error('Response status:', error.response?.status);
-        console.error('Response data:', error.response?.data);
       }
       throw new Error('Failed to fetch available voices');
     }
@@ -109,17 +102,11 @@ export class ElevenLabsService {
         throw new Error(`Text too long: ${text.length} characters. Maximum is 5000 characters.`);
       }
       
-      console.log('Generating speech with ElevenLabs...');
-      console.log('Voice ID:', voiceId);
-      console.log('Text length:', text.length);
-      console.log('Voice settings:', VOICE_CONFIG);
-      
       // Use the provided voice ID directly
       let selectedVoiceId = voiceId;
       
       if (voiceId === 'peter-griffin' || voiceId === 'default') {
         selectedVoiceId = 'Z71pmCaOEMH9jS5ZdMfF'; // Your specific voice
-        console.log('Using your custom voice ID');
       }
 
       // Request body for ElevenLabs API
@@ -134,8 +121,6 @@ export class ElevenLabsService {
         }
       };
 
-      console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
       const response = await axios.post(
         `${this.baseUrl}/text-to-speech/${selectedVoiceId}`,
         requestBody,
@@ -148,8 +133,6 @@ export class ElevenLabsService {
           responseType: 'arraybuffer'
         }
       );
-
-      console.log('ElevenLabs speech generation successful!');
       
       // Generate unique filenames
       const timestamp = Date.now();
@@ -179,19 +162,9 @@ export class ElevenLabsService {
         success: true
       };
     } catch (error) {
-      console.error('ElevenLabs API error:', error);
       if (axios.isAxiosError(error)) {
-        console.error('Response status:', error.response?.status);
-        console.error('Response data:', error.response?.data);
-        console.error('Response headers:', error.response?.headers);
-        console.error('Request URL:', error.config?.url);
-        console.error('Request headers:', error.config?.headers);
-        console.error('Request data:', error.config?.data);
-        
         // Check if it's a text length issue
         if (error.response?.status === 400) {
-          console.error('Text length:', text.length);
-          console.error('Text preview:', text.substring(0, 200) + '...');
         }
       }
       throw new Error(`Failed to generate speech: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -214,7 +187,6 @@ export class ElevenLabsService {
 
       return response.data;
     } catch (error) {
-      console.error('Error fetching voice info:', error);
       throw new Error('Failed to fetch voice information');
     }
   }
@@ -227,9 +199,6 @@ export class ElevenLabsService {
       
       const apiKey = this.getApiKey();
       
-      console.log('Generating dialogue speech with multiple voices...');
-      console.log('Dialogue lines:', dialogue.length);
-      
       const timestamp = Date.now();
       const audioSegments: string[] = [];
       const subtitleSegments: SubtitleSegment[] = [];
@@ -240,8 +209,6 @@ export class ElevenLabsService {
       for (let i = 0; i < dialogue.length; i++) {
         const line = dialogue[i];
         const voiceId = VOICE_IDS[line.speaker];
-        
-        console.log(`Generating audio for ${line.speaker}: "${line.text}"`);
         
         const requestBody = {
           text: line.text,
@@ -286,8 +253,6 @@ export class ElevenLabsService {
         });
         
         currentTime += actualDuration + 0.8; // Add pause between speakers
-        
-        console.log(`Generated audio segment for ${line.speaker} (${actualDuration.toFixed(2)}s)`);
       }
       
       // Combine all audio segments into one file with proper spacing
@@ -320,8 +285,6 @@ export class ElevenLabsService {
       // Clean up temporary files (but keep test files)
       if (!this.testMode) {
         this.audioService.cleanupAudioFiles([...audioSegments, combinedAudioPath]);
-      } else {
-        console.log('Test mode: Keeping audio files for inspection');
       }
       
       return {
@@ -330,15 +293,12 @@ export class ElevenLabsService {
         success: true
       };
     } catch (error) {
-      console.error('Dialogue speech generation error:', error);
       throw new Error(`Failed to generate dialogue speech: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   private async generateDialogueSpeechFromTestFiles(dialogue: DialogueLine[]): Promise<ElevenLabsResponse> {
     try {
-      console.log('Using test audio files for dialogue generation...');
-      
       const timestamp = Date.now();
       const audioSegments: string[] = [];
       const subtitleSegments: SubtitleSegment[] = [];
@@ -369,8 +329,6 @@ export class ElevenLabsService {
         });
         
         currentTime += actualDuration + 0.8;
-        
-        console.log(`Using test audio for ${line.speaker} (${actualDuration.toFixed(2)}s)`);
       }
       
       // Combine all audio segments
@@ -409,7 +367,6 @@ export class ElevenLabsService {
         success: true
       };
     } catch (error) {
-      console.error('Test dialogue generation error:', error);
       throw new Error(`Failed to generate test dialogue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

@@ -36,7 +36,6 @@ router.post('/generate', async (req, res) => {
       data: response
     });
   } catch (error) {
-    console.error('Chat generation error:', error);
     res.status(500).json({ 
       error: 'Failed to generate response',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -68,10 +67,8 @@ router.post('/speak', async (req, res) => {
 
     // Check if we have dialogue data to generate multi-voice speech
     if (dialogue && Array.isArray(dialogue) && dialogue.length > 0) {
-      console.log('Generating dialogue speech with multiple voices...');
       speechResponse = await elevenLabsService.generateDialogueSpeech(dialogue);
     } else {
-      console.log('Generating single voice speech...');
       // Generate speech with preconfigured voice settings (fallback to single voice)
       speechResponse = await elevenLabsService.generateSpeech(
         text.trim(), 
@@ -91,7 +88,6 @@ router.post('/speak', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Speech generation error:', error);
     res.status(500).json({ 
       error: 'Failed to generate speech',
       message: error instanceof Error ? error.message : 'Unknown error'

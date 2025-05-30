@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ChatResponse {
   message: string;
@@ -29,6 +29,30 @@ export default function Home() {
   const [error, setError] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [fallbackVideoUrl, setFallbackVideoUrl] = useState<string>('');
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number | null>(null);
+
+  // Track elapsed time during generation
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isGenerating && startTime) {
+      interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setElapsedTime(elapsed);
+        
+        // Estimate remaining time (rough estimate: 30-60 seconds total)
+        const estimatedTotal = 45; // seconds
+        const remaining = Math.max(0, estimatedTotal - elapsed);
+        setEstimatedTimeRemaining(remaining);
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGenerating, startTime]);
 
   const handleGenerateVideo = async () => {
     if (!topic.trim()) return;
@@ -38,6 +62,9 @@ export default function Home() {
     setVideoUrl('');
     setFallbackVideoUrl('');
     setDialogue([]);
+    setStartTime(Date.now());
+    setElapsedTime(0);
+    setEstimatedTimeRemaining(45);
 
     try {
       // Step 1: Generate dialogue
@@ -105,6 +132,9 @@ export default function Home() {
     setError('');
     setVideoUrl('');
     setFallbackVideoUrl('');
+    setStartTime(null);
+    setElapsedTime(0);
+    setEstimatedTimeRemaining(null);
   };
 
   return (
@@ -115,8 +145,8 @@ export default function Home() {
       }}></div>
       
       <div className="relative z-10 px-4 sm:px-6 lg:px-8">
-        {/* Hero Section - Centered when no video, top-aligned when video present */}
-        <div className={`text-center ${videoUrl ? 'pt-16 pb-8' : 'pt-32 pb-12'}`}>
+        {/* Hero Section */}
+        <div className="text-center pt-16 pb-8">
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 mb-6 font-[var(--font-rubik)]">
             <span className="text-yellow-400">
               Peetle
@@ -128,8 +158,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Main Content Section */}
-        <div className={`w-full max-w-4xl mx-auto pb-16 ${!videoUrl ? 'transform -translate-y-8' : ''}`}>
+        {/* Input Section */}
+        <div className="w-full max-w-4xl mx-auto mb-8">
           <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-yellow-200/60">
             <div className="space-y-6">
               <div>
@@ -148,26 +178,13 @@ export default function Home() {
               </div>
               
               <div className="flex gap-4">
-                <button
-                  onClick={handleGenerateVideo}
-                  disabled={!topic.trim() || isGenerating}
-                  className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
-                >
-                  {isGenerating ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-2"></div>
-                      Generating Video...
-                    </div>
-                  ) : topic.trim() ? 'Generate Video' : 'Enter a topic to continue'}
-                </button>
-                
-                {(videoUrl || error) && (
+                {!isGenerating && (
                   <button
-                    onClick={handleReset}
-                    disabled={isGenerating}
-                    className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-xl text-lg transition-all duration-200"
+                    onClick={handleGenerateVideo}
+                    disabled={!topic.trim()}
+                    className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
                   >
-                    New Video
+                    {topic.trim() ? 'Generate Video' : 'Enter a topic to continue'}
                   </button>
                 )}
               </div>
@@ -178,51 +195,84 @@ export default function Home() {
                   <p className="text-red-700 text-center">{error}</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
 
-              {/* Video Player */}
-              {videoUrl && (
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex justify-center">
-                    <video 
-                      key={videoUrl}
-                      controls 
-                      className="max-w-sm w-full rounded-lg shadow-lg"
-                      style={{ aspectRatio: '9/16' }}
-                      preload="metadata"
-                      onError={(e) => {
-                        const target = e.target as HTMLVideoElement;
-                        const error = target.error;
-                        console.error('Video playback error details:', {
-                          code: error?.code,
-                          message: error?.message,
-                          networkState: target.networkState,
-                          readyState: target.readyState,
-                          src: target.src
-                        });
-                        
-                        if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
-                          console.log('Trying fallback URL:', fallbackVideoUrl);
-                          target.src = fallbackVideoUrl;
-                          target.load();
-                        } else {
-                          setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
-                        }
-                      }}
-                      onLoadStart={() => console.log('Video load started')}
-                      onLoadedMetadata={() => console.log('Video metadata loaded')}
-                      onCanPlay={() => console.log('Video can play')}
-                      onLoadedData={() => console.log('Video data loaded')}
-                    >
-                      <source src={videoUrl} type="video/mp4" />
-                      <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
-                    </video>
+        {/* Video Section - Separate from input */}
+        {(isGenerating || videoUrl) && (
+          <div className="w-full max-w-4xl mx-auto pb-16">
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-blue-200/60">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {isGenerating ? 'Generating Your Video...' : 'Your Generated Video'}
+                </h2>
+                <p className="text-gray-600">
+                  {isGenerating ? 'Please wait while we create your Peter & Stewie explanation video!' : 'Here\'s your Peter & Stewie explanation video!'}
+                </p>
+              </div>
+              
+              {isGenerating ? (
+                <div className="flex flex-col items-center space-y-6">
+                  {/* Progress Animation */}
+                  <div className="relative">
+                    <div className="w-32 h-32 border-8 border-yellow-200 rounded-full"></div>
+                    <div className="absolute top-0 left-0 w-32 h-32 border-8 border-yellow-500 rounded-full border-t-transparent animate-spin"></div>
                   </div>
+                  
+                  {/* Progress Information */}
+                  <div className="text-center space-y-2">
+                    <div className="text-lg font-semibold text-gray-800">
+                      Time Elapsed: {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
+                    </div>
+                    {estimatedTimeRemaining !== null && (
+                      <div className="text-md text-gray-600">
+                        Estimated Time Remaining: {Math.floor(estimatedTimeRemaining / 60)}:{(estimatedTimeRemaining % 60).toString().padStart(2, '0')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <video 
+                    key={videoUrl}
+                    controls 
+                    className="max-w-sm w-full rounded-lg shadow-lg"
+                    style={{ aspectRatio: '9/16' }}
+                    preload="metadata"
+                    onError={(e) => {
+                      const target = e.target as HTMLVideoElement;
+                      const error = target.error;
+                      console.error('Video playback error details:', {
+                        code: error?.code,
+                        message: error?.message,
+                        networkState: target.networkState,
+                        readyState: target.readyState,
+                        src: target.src
+                      });
+                      
+                      if (fallbackVideoUrl && target.src !== fallbackVideoUrl) {
+                        console.log('Trying fallback URL:', fallbackVideoUrl);
+                        target.src = fallbackVideoUrl;
+                        target.load();
+                      } else {
+                        setError(`Video playback failed. Error code: ${error?.code}. Please try the direct link or download.`);
+                      }
+                    }}
+                    onLoadStart={() => console.log('Video load started')}
+                    onLoadedMetadata={() => console.log('Video metadata loaded')}
+                    onCanPlay={() => console.log('Video can play')}
+                    onLoadedData={() => console.log('Video data loaded')}
+                  >
+                    <source src={videoUrl} type="video/mp4" />
+                    <p>Your browser does not support the video element. Please use the direct link or download the video file.</p>
+                  </video>
                 </div>
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
-}
+} 

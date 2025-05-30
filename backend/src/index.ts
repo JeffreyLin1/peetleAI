@@ -8,15 +8,6 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Debug: Log environment variables (without exposing the full API key)
-console.log('🔧 Environment check:');
-console.log('PORT:', process.env.PORT);
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
-console.log('USE_TEST_AUDIO:', process.env.USE_TEST_AUDIO);
-console.log('OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-console.log('ELEVENLABS_API_KEY exists:', !!process.env.ELEVENLABS_API_KEY);
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -48,11 +39,6 @@ app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio')));
 app.use('/videos', express.static(path.join(process.cwd(), 'public', 'videos'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.mp4')) {
-      // Only log once per video file, not every range request
-      const filename = path.basename(filePath);
-      if (!res.headersSent) {
-        console.log('📹 Serving video:', filename);
-      }
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'no-cache');
@@ -81,7 +67,6 @@ app.get('/api/videos/list', (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Error listing videos:', error);
     res.status(500).json({ error: 'Failed to list videos' });
   }
 });
@@ -126,7 +111,6 @@ app.get('/api/videos/test/:filename', (req, res) => {
       fs.createReadStream(videoPath).pipe(res);
     }
   } catch (error) {
-    console.error('Error serving test video:', error);
     res.status(500).json({ error: 'Failed to serve video' });
   }
 });
@@ -141,7 +125,6 @@ app.get('/health', (req, res) => {
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
   res.status(500).json({ 
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
@@ -154,8 +137,4 @@ app.use('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on port ${PORT}`);
-  console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`🎵 Audio files served at: http://localhost:${PORT}/audio/`);
-  console.log(`🎥 Video files served at: http://localhost:${PORT}/videos/`);
 }); 

@@ -20,6 +20,11 @@ const rubik = Rubik({
 export const metadata: Metadata = {
   title: "PeetleAI - Generate Engaging Educational Videos",
   description: "Transform any topic into entertaining videos with Subway Surfers gameplay and Peter & Stewie Griffin explanations",
+  icons: {
+    icon: '/peetle.png',
+    shortcut: '/peetle.png',
+    apple: '/peetle.png',
+  },
 };
 
 export default function RootLayout({

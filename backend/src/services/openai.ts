@@ -29,7 +29,6 @@ export class OpenAIService {
 
   constructor() {
     this.testMode = process.env.USE_TEST_AUDIO === 'true';
-    console.log(`OpenAI Service initialized in ${this.testMode ? 'TEST' : 'LIVE'} mode`);
   }
 
   private getOpenAIClient(): OpenAI {
@@ -98,36 +97,25 @@ Keep the total response under 350 words.`;
         } : undefined
       };
     } catch (error) {
-      console.error('OpenAI API error:', error);
       throw new Error('Failed to generate response from OpenAI');
     }
   }
 
   private generateTestResponse(topic: string): ChatResponse {
-    console.log(`🧪 Using test dialogue from file (ignoring topic: "${topic}")`);
-    console.log(`📁 Test script path: ${this.testScriptPath}`);
-    
     try {
       // Load the test script from file
       if (!fs.existsSync(this.testScriptPath)) {
-        console.error(`❌ Test script file not found: ${this.testScriptPath}`);
         throw new Error(`Test script file not found: ${this.testScriptPath}`);
       }
       
-      console.log(`✅ Test script file exists`);
       const testMessage = fs.readFileSync(this.testScriptPath, 'utf8').trim();
-      console.log(`📄 Loaded test message (${testMessage.length} characters)`);
       
       // Parse the dialogue from the file
       const testDialogue = this.parseDialogue(testMessage);
       
       if (testDialogue.length === 0) {
-        console.error(`❌ No valid dialogue found in test script file`);
         throw new Error('No valid dialogue found in test script file');
       }
-      
-      console.log(`✅ Loaded test dialogue with ${testDialogue.length} lines`);
-      console.log(`🎭 First line: ${testDialogue[0].speaker}: ${testDialogue[0].text.substring(0, 50)}...`);
       
       return {
         message: testMessage,
@@ -139,7 +127,6 @@ Keep the total response under 350 words.`;
         }
       };
     } catch (error) {
-      console.error('❌ Error loading test script:', error);
       throw new Error(`Failed to load test dialogue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

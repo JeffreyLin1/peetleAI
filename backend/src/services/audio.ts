@@ -34,7 +34,6 @@ export class AudioService {
       const duration = parseFloat(stdout.trim());
       return isNaN(duration) ? 3.0 : duration; // fallback to 3 seconds if parsing fails
     } catch (error) {
-      console.error('Error getting audio duration:', error);
       return 3.0; // fallback duration
     }
   }
@@ -45,8 +44,6 @@ export class AudioService {
     outputPath: string
   ): Promise<void> {
     try {
-      console.log('Combining audio segments with proper timing...');
-      
       if (audioSegments.length === 1) {
         fs.copyFileSync(audioSegments[0], outputPath);
         return;
@@ -80,15 +77,9 @@ export class AudioService {
       
       const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -map "[out]" -y "${outputPath}"`;
       
-      console.log('Running FFmpeg timing command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
       
-      if (stderr) console.log('FFmpeg timing stderr:', stderr);
-      if (stdout) console.log('FFmpeg timing stdout:', stdout);
-      
-      console.log('Audio segments combined with timing successfully');
     } catch (error) {
-      console.error('Error combining audio segments with timing:', error);
       // Fallback to simple concatenation
       await this.combineAudioSegments(audioSegments, outputPath);
     }
@@ -96,8 +87,6 @@ export class AudioService {
 
   async combineAudioSegments(audioSegments: string[], outputPath: string): Promise<void> {
     try {
-      console.log('Combining audio segments (fallback method)...');
-      
       if (audioSegments.length === 1) {
         // Apply volume boost to single segment too
         const boostCommand = `ffmpeg -i "${audioSegments[0]}" -filter:a "volume=2.0" -y "${outputPath}"`;
@@ -134,11 +123,7 @@ export class AudioService {
       
       const ffmpegCommand = `ffmpeg -f concat -safe 0 -i "${listFilePath}" -c copy -y "${outputPath}"`;
       
-      console.log('Running FFmpeg fallback command:', ffmpegCommand);
       const { stdout, stderr } = await execAsync(ffmpegCommand);
-      
-      if (stderr) console.log('FFmpeg fallback stderr:', stderr);
-      if (stdout) console.log('FFmpeg fallback stdout:', stdout);
       
       // Clean up temporary files
       tempFiles.forEach(file => {
@@ -148,9 +133,7 @@ export class AudioService {
       });
       if (fs.existsSync(listFilePath)) fs.unlinkSync(listFilePath);
       
-      console.log('Audio segments combined successfully (fallback)');
     } catch (error) {
-      console.error('Error combining audio segments (fallback):', error);
       throw new Error(`Failed to combine audio segments: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -158,7 +141,6 @@ export class AudioService {
   async saveAudioBuffer(buffer: Buffer, filename: string): Promise<string> {
     const audioPath = path.join(this.audioDir, filename);
     fs.writeFileSync(audioPath, buffer);
-    console.log('Audio file saved to:', audioPath);
     return audioPath;
   }
 
@@ -172,7 +154,6 @@ export class AudioService {
     const targetPath = path.join(this.audioDir, targetFilename);
     fs.copyFileSync(testAudioFile, targetPath);
     
-    console.log(`Using test audio for ${speaker} (index ${index}): ${testAudioFile}`);
     return targetPath;
   }
 
@@ -180,7 +161,6 @@ export class AudioService {
     filePaths.forEach(filePath => {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log(`Cleaned up audio file: ${filePath}`);
       }
     });
   }

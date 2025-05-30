@@ -26,7 +26,6 @@ export class WhisperService {
   private openai: OpenAI | null = null;
 
   constructor() {
-    console.log('WhisperService initialized');
   }
 
   private getOpenAIClient(): OpenAI {
@@ -44,8 +43,6 @@ export class WhisperService {
 
   async transcribeAudioWithWordTimestamps(audioPath: string): Promise<WhisperResponse> {
     try {
-      console.log('Transcribing audio with word timestamps:', audioPath);
-      
       if (!fs.existsSync(audioPath)) {
         throw new Error(`Audio file not found: ${audioPath}`);
       }
@@ -62,8 +59,6 @@ export class WhisperService {
         response_format: 'verbose_json',
         timestamp_granularities: ['word']
       });
-
-      console.log('Whisper transcription completed');
       
       // Process the response to extract word-level timestamps
       const segments: TranscriptionSegment[] = [];
@@ -114,8 +109,6 @@ export class WhisperService {
         duration = words[words.length - 1].end;
       } else {
         // Fallback if word timestamps are not available
-        console.warn('Word timestamps not available, using segment-level timestamps');
-        
         if (transcription.segments) {
           for (const segment of transcription.segments) {
             // Estimate word timing within the segment
@@ -141,8 +134,6 @@ export class WhisperService {
           duration = transcription.segments[transcription.segments.length - 1]?.end || 0;
         }
       }
-
-      console.log(`Transcription processed: ${segments.length} segments, ${duration.toFixed(2)}s duration`);
       
       return {
         segments,
@@ -151,15 +142,12 @@ export class WhisperService {
       };
 
     } catch (error) {
-      console.error('Error transcribing audio with Whisper:', error);
       throw new Error(`Failed to transcribe audio: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async transcribeDialogueAudio(audioPath: string, dialogueSegments: { start: number; end: number; speaker: string; text: string }[]): Promise<WhisperResponse> {
     try {
-      console.log('Transcribing dialogue audio with speaker information');
-      
       // First get the word-level transcription
       const transcription = await this.transcribeAudioWithWordTimestamps(audioPath);
       
@@ -189,7 +177,6 @@ export class WhisperService {
           });
         } else {
           // Fallback: estimate word timing for this segment
-          console.warn(`No word timestamps found for segment: ${dialogueSegment.text}`);
           const words = dialogueSegment.text.trim().split(/\s+/);
           const segmentDuration = dialogueSegment.end - dialogueSegment.start;
           const wordDuration = segmentDuration / words.length;
@@ -217,7 +204,6 @@ export class WhisperService {
       };
 
     } catch (error) {
-      console.error('Error transcribing dialogue audio:', error);
       throw new Error(`Failed to transcribe dialogue audio: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

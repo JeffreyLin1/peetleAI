@@ -5,6 +5,9 @@ import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
 import { AuthModal } from '../components/auth/AuthModal';
 
+// Get the API base URL from environment or fallback to localhost
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 interface ContentResponse {
   message: string;
   dialogue?: DialogueLine[];
@@ -94,7 +97,7 @@ export default function Home() {
       );
 
       if (videoData.success && videoData.data) {
-        const fullVideoUrl = `http://localhost:3001${videoData.data.videoUrl}`;
+        const fullVideoUrl = `${API_BASE_URL}${videoData.data.videoUrl}`;
         const filename = videoData.data.videoUrl.split('/').pop();
         const streamVideoUrl = api.video.stream(filename || '');
         

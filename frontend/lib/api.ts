@@ -81,10 +81,45 @@ export class ApiClient {
   }
 
   /**
+   * Upload file (multipart/form-data)
+   */
+  async uploadFile<T = any>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
+    try {
+      const token = await authService.getAccessToken()
+      
+      const headers: Record<string, string> = {}
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Request failed')
+      }
+
+      return data
+    } catch (error) {
+      console.error('API upload failed:', error)
+      throw error
+    }
+  }
+
+  /**
    * DELETE request
    */
-  async delete<T = any>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' })
+  async delete<T = any>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   }
 }
 
@@ -106,9 +141,21 @@ export const api = {
 
   // Video generation and management endpoints
   video: {
-    generate: (text: string, dialogue?: any[]) => 
-      apiClient.post('/api/video/generate', { text, dialogue }),
+    generate: (dialogue: any[], imagePlaceholders?: { [placeholder: string]: string }) => 
+      apiClient.post('/api/video/generate', { dialogue, imagePlaceholders }),
     list: () => apiClient.get('/api/video/list'),
     stream: (filename: string) => `${API_BASE_URL}/api/video/stream/${filename}`,
+  },
+
+  // Image upload and management endpoints
+  images: {
+    upload: (file: File, placeholder: string) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('placeholder', placeholder);
+      return apiClient.uploadFile('/api/images/upload', formData);
+    },
+    delete: (imagePath: string) => 
+      apiClient.delete('/api/images/delete', { imagePath }),
   },
 } 

@@ -8,7 +8,7 @@ import path from 'path';
 dotenv.config();
 
 // Import routes AFTER environment variables are loaded
-import { authRouter, contentRouter, videoRouter } from './routes';
+import { authRouter, contentRouter, videoRouter, imageRouter } from './routes';
 import { sendError } from './utils/response';
 import { HTTP_STATUS } from './config/constants';
 
@@ -50,11 +50,13 @@ app.use('/videos', express.static(path.join(process.cwd(), 'public', 'videos'), 
     }
   }
 }));
+app.use('/images', express.static(path.join(process.cwd(), 'public', 'images')));
 
 // API Routes
 app.use('/api/auth', authRouter);
 app.use('/api/content', contentRouter);
 app.use('/api/video', videoRouter);
+app.use('/api/images', imageRouter);
 
 // Health check
 app.get('/health', (req, res) => {

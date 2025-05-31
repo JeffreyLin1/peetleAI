@@ -2,6 +2,7 @@ import { DialogueLine } from './content.types';
 
 export interface VideoGenerationRequest {
   dialogue: DialogueLine[];
+  imagePlaceholders?: { [placeholder: string]: string }; // placeholder -> image file path
 }
 
 export interface VideoGenerationResponse {
@@ -28,4 +29,10 @@ export interface VideoListResponse {
 export interface VideoStreamOptions {
   range?: string;
   quality?: 'low' | 'medium' | 'high';
+}
+
+export interface ImageUploadResponse {
+  success: boolean;
+  imagePath: string;
+  placeholder: string;
 } 

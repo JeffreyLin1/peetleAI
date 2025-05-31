@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
 import { AuthModal } from '../components/auth/AuthModal';
+import { ImageUpload } from '../components/ImageUpload';
 
 // Get the API base URL from environment or fallback to localhost
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -21,6 +22,7 @@ interface ContentResponse {
 interface DialogueLine {
   speaker: 'Peter' | 'Stewie';
   text: string;
+  imagePlaceholder?: string;
 }
 
 interface VideoResponse {
@@ -32,7 +34,8 @@ export default function Home() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [topic, setTopic] = useState('');
   const [dialogue, setDialogue] = useState<DialogueLine[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [error, setError] = useState<string>('');
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [fallbackVideoUrl, setFallbackVideoUrl] = useState<string>('');
@@ -40,12 +43,22 @@ export default function Home() {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<{ [placeholder: string]: string }>({});
+  const [currentStep, setCurrentStep] = useState<'input' | 'script' | 'images' | 'video'>('input');
 
-  // Track elapsed time during generation
+  // Get unique placeholders from dialogue
+  const uniquePlaceholders = dialogue.reduce((acc, line) => {
+    if (line.imagePlaceholder && !acc.includes(line.imagePlaceholder)) {
+      acc.push(line.imagePlaceholder);
+    }
+    return acc;
+  }, [] as string[]);
+
+  // Track elapsed time during video generation
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
-    if (isGenerating && startTime) {
+    if (isGeneratingVideo && startTime) {
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         setElapsedTime(elapsed);
@@ -60,9 +73,9 @@ export default function Home() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isGenerating, startTime]);
+  }, [isGeneratingVideo, startTime]);
 
-  const handleGenerateVideo = async () => {
+  const handleGenerateScript = async () => {
     if (!user) {
       setShowAuthModal(true);
       return;
@@ -70,31 +83,59 @@ export default function Home() {
 
     if (!topic.trim()) return;
 
-    setIsGenerating(true);
+    setIsGeneratingScript(true);
     setError('');
-    setVideoUrl('');
-    setFallbackVideoUrl('');
     setDialogue([]);
-    setStartTime(Date.now());
-    setElapsedTime(0);
-    setEstimatedTimeRemaining(45);
+    setUploadedImages({});
+    setCurrentStep('input');
 
     try {
-      // Step 1: Generate dialogue content using the new content API
+      // Generate dialogue content using the content API
       const contentData = await api.content.generate(topic.trim());
 
       if (!contentData.success || !contentData.data) {
         throw new Error('Invalid response format');
       }
 
-      const responseText = contentData.data.message;
       const dialogueData = contentData.data.dialogue || [];
+      setDialogue(dialogueData);
+      
+      // Skip script review and go directly to image upload or video generation
+      const uniquePlaceholders = dialogueData.reduce((acc: string[], line: DialogueLine) => {
+        if (line.imagePlaceholder && !acc.includes(line.imagePlaceholder)) {
+          acc.push(line.imagePlaceholder);
+        }
+        return acc;
+      }, [] as string[]);
 
-      // Step 2: Generate video using the new video API
-      const videoData = await api.video.generate(
-        responseText,
-        dialogueData.length > 0 ? dialogueData : undefined
-      );
+      if (uniquePlaceholders.length > 0) {
+        setCurrentStep('images');
+      } else {
+        // No placeholders, go directly to video generation
+        setCurrentStep('video');
+        handleGenerateVideo();
+      }
+    } catch (err) {
+      console.error('Error generating script:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    setIsGeneratingVideo(true);
+    setError('');
+    setVideoUrl('');
+    setFallbackVideoUrl('');
+    setStartTime(Date.now());
+    setElapsedTime(0);
+    setEstimatedTimeRemaining(55);
+    setCurrentStep('video');
+
+    try {
+      // Generate video using the video API with dialogue and uploaded images
+      const videoData = await api.video.generate(dialogue, uploadedImages);
 
       if (videoData.success && videoData.data) {
         const fullVideoUrl = `${API_BASE_URL}${videoData.data.videoUrl}`;
@@ -103,7 +144,6 @@ export default function Home() {
         
         setVideoUrl(fullVideoUrl);
         setFallbackVideoUrl(streamVideoUrl);
-        console.log('Video file ready:', fullVideoUrl);
       } else {
         throw new Error('Invalid video response format');
       }
@@ -111,8 +151,23 @@ export default function Home() {
       console.error('Error generating video:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingVideo(false);
     }
+  };
+
+  const handleImageUploaded = (placeholder: string, imagePath: string) => {
+    setUploadedImages(prev => ({
+      ...prev,
+      [placeholder]: imagePath
+    }));
+  };
+
+  const handleImageRemoved = (placeholder: string) => {
+    setUploadedImages(prev => {
+      const newImages = { ...prev };
+      delete newImages[placeholder];
+      return newImages;
+    });
   };
 
   const handleReset = () => {
@@ -124,6 +179,8 @@ export default function Home() {
     setStartTime(null);
     setElapsedTime(0);
     setEstimatedTimeRemaining(null);
+    setUploadedImages({});
+    setCurrentStep('input');
   };
 
   const handleSignOut = async () => {
@@ -199,21 +256,21 @@ export default function Home() {
                   placeholder={user ? "Enter a topic or question... (e.g., 'How does photosynthesis work?' or 'Explain quantum physics')" : "Sign in to start generating videos..."}
                   className="w-full px-4 py-4 text-lg bg-white border border-yellow-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none shadow-sm"
                   rows={4}
-                  disabled={isGenerating || !user}
+                  disabled={isGeneratingScript || isGeneratingVideo || !user}
                 />
               </div>
               
               <div className="flex gap-4">
-                {!isGenerating && (
+                {!isGeneratingScript && !isGeneratingVideo && (
                   <button
-                    onClick={handleGenerateVideo}
+                    onClick={handleGenerateScript}
                     disabled={user ? !topic.trim() : false}
                     className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100 shadow-lg"
                   >
                     {!user 
                       ? 'Log In to Generate Videos' 
                       : topic.trim() 
-                        ? 'Generate Video' 
+                        ? 'Generate Script & Upload Images' 
                         : 'Enter a topic to continue'
                     }
                   </button>
@@ -230,20 +287,65 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Dialogue Display Section - REMOVED since we skip script review */}
+
+        {/* Image Upload Section */}
+        {currentStep === 'images' && uniquePlaceholders.length > 0 && user && (
+          <div className="w-full max-w-4xl mx-auto mb-8">
+            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-purple-200/60">
+              <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  Upload Images for Placeholders
+                </h2>
+                <p className="text-gray-600">
+                  Upload images for each placeholder to replace them in the video, or skip to use text placeholders
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                {uniquePlaceholders.map((placeholder) => (
+                  <ImageUpload
+                    key={placeholder}
+                    placeholder={placeholder}
+                    onImageUploaded={handleImageUploaded}
+                    onImageRemoved={handleImageRemoved}
+                    uploadedImagePath={uploadedImages[placeholder]}
+                  />
+                ))}
+              </div>
+
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={handleReset}
+                  className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Start Over
+                </button>
+                <button
+                  onClick={handleGenerateVideo}
+                  className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  Generate Video
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Video Section - Separate from input */}
-        {(isGenerating || videoUrl) && user && (
+        {(isGeneratingVideo || videoUrl) && user && (
           <div className="w-full max-w-4xl mx-auto pb-16">
             <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-blue-200/60">
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  {isGenerating ? 'Generating Your Video...' : 'Your Generated Video'}
+                  {isGeneratingVideo ? 'Generating Your Video...' : 'Your Generated Video'}
                 </h2>
                 <p className="text-gray-600">
-                  {isGenerating ? 'Please wait while we create your Peter & Stewie explanation video!' : 'Here\'s your Peter & Stewie explanation video!'}
+                  {isGeneratingVideo ? 'Please wait while we create your Peter & Stewie explanation video!' : 'Here\'s your Peter & Stewie explanation video!'}
                 </p>
               </div>
               
-              {isGenerating ? (
+              {isGeneratingVideo ? (
                 <div className="flex flex-col items-center space-y-6">
                   {/* Progress Animation */}
                   <div className="relative">

@@ -1,6 +1,7 @@
 export interface DialogueLine {
   speaker: 'Peter' | 'Stewie';
   text: string;
+  imagePlaceholder?: string;
 }
 
 export interface ContentGenerationRequest {

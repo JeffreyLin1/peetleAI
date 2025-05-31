@@ -22,15 +22,15 @@ export class VideoController {
    */
   async generateVideo(req: Request, res: Response): Promise<void> {
     try {
-      const { dialogue }: VideoGenerationRequest = req.body;
+      const { dialogue, imagePlaceholders }: VideoGenerationRequest = req.body;
 
       // Validate that dialogue is provided
       if (!dialogue || !Array.isArray(dialogue) || dialogue.length === 0) {
         throw new ValidationError('Dialogue is required and must be a non-empty array');
       }
 
-      // Generate video with dialogue
-      const speechResponse = await this.elevenLabsService.generateDialogueSpeech(dialogue);
+      // Generate video with dialogue and optional image placeholders
+      const speechResponse = await this.elevenLabsService.generateDialogueSpeech(dialogue, imagePlaceholders);
 
       if (!speechResponse.success || !speechResponse.video_url) {
         throw new Error('No video data received from speech service');

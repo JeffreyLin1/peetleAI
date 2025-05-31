@@ -48,4 +48,5 @@ export const ERROR_MESSAGES = {
   CONTENT_GENERATION_FAILED: 'Failed to generate content',
   VIDEO_NOT_FOUND: 'Video not found',
   AUTHENTICATION_REQUIRED: 'Authentication required',
+  UPLOAD_FAILED: 'Failed to upload image',
 } as const; 

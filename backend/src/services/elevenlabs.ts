@@ -29,6 +29,7 @@ export interface VoiceSettings {
 export interface DialogueLine {
   speaker: 'Peter' | 'Stewie';
   text: string;
+  imagePlaceholder?: string;
 }
 
 // Voice IDs for the characters
@@ -110,10 +111,10 @@ export class ElevenLabsService {
     }
   }
 
-  async generateDialogueSpeech(dialogue: DialogueLine[]): Promise<ElevenLabsResponse> {
+  async generateDialogueSpeech(dialogue: DialogueLine[], imagePlaceholders?: { [placeholder: string]: string }): Promise<ElevenLabsResponse> {
     try {
       if (this.testMode) {
-        return this.generateDialogueSpeechFromTestFiles(dialogue);
+        return this.generateDialogueSpeechFromTestFiles(dialogue, imagePlaceholders);
       }
       
       const apiKey = this.getApiKey();
@@ -186,24 +187,26 @@ export class ElevenLabsService {
       const videoFilename = `dialogue_video_${timestamp}.mp4`;
       const videoPath = path.join(this.videoService['videoDir'], videoFilename);
       
-      // Prepare dialogue segments for Whisper transcription
-      const dialogueSegments = subtitleSegments.map(segment => ({
+      // Prepare dialogue segments for video generation
+      const dialogueSegments = subtitleSegments.map((segment, index) => ({
         start: segment.start,
         end: segment.end,
         speaker: segment.speaker || 'Unknown',
-        text: segment.text
+        text: segment.text,
+        imagePlaceholder: dialogue[index]?.imagePlaceholder
       }));
       
       const videoResponse = await this.videoService.createVideoFromAudio({
         audioPath: combinedAudioPath,
         outputPath: videoPath,
         useWordByWordCaptions: true,
-        dialogueSegments
+        dialogueSegments,
+        imagePlaceholders
       });
       
-      // Clean up temporary files (but keep test files)
+      // Clean up temporary files (but keep test files and let VideoService handle final audio cleanup)
       if (!this.testMode) {
-        this.audioService.cleanupAudioFiles([...audioSegments, combinedAudioPath]);
+        this.audioService.cleanupAudioFiles(audioSegments); // Only clean up individual segments, not combined audio
       }
       
       return {
@@ -216,7 +219,7 @@ export class ElevenLabsService {
     }
   }
 
-  private async generateDialogueSpeechFromTestFiles(dialogue: DialogueLine[]): Promise<ElevenLabsResponse> {
+  private async generateDialogueSpeechFromTestFiles(dialogue: DialogueLine[], imagePlaceholders?: { [placeholder: string]: string }): Promise<ElevenLabsResponse> {
     try {
       const timestamp = Date.now();
       const audioSegments: string[] = [];
@@ -262,23 +265,25 @@ export class ElevenLabsService {
       const videoFilename = `dialogue_video_${timestamp}.mp4`;
       const videoPath = path.join(this.videoService['videoDir'], videoFilename);
       
-      // Prepare dialogue segments for Whisper transcription
-      const dialogueSegments = subtitleSegments.map(segment => ({
+      // Prepare dialogue segments for video generation
+      const dialogueSegments = subtitleSegments.map((segment, index) => ({
         start: segment.start,
         end: segment.end,
         speaker: segment.speaker || 'Unknown',
-        text: segment.text
+        text: segment.text,
+        imagePlaceholder: dialogue[index]?.imagePlaceholder
       }));
       
       const videoResponse = await this.videoService.createVideoFromAudio({
         audioPath: combinedAudioPath,
         outputPath: videoPath,
         useWordByWordCaptions: true,
-        dialogueSegments
+        dialogueSegments,
+        imagePlaceholders
       });
       
-      // Clean up working files
-      this.audioService.cleanupAudioFiles([...audioSegments, combinedAudioPath]);
+      // Clean up working files (let VideoService handle final audio cleanup)
+      this.audioService.cleanupAudioFiles(audioSegments); // Only clean up individual segments, not combined audio
       
       return {
         video_url: videoResponse.video_url,

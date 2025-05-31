@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { AssetService, type AssetPaths } from './assets';
+import { CloudStorageService } from './storage';
 
 const execAsync = promisify(exec);
 
@@ -11,7 +12,8 @@ export interface VideoGenerationOptions {
   outputPath: string;
   subtitleSegments?: SubtitleSegment[];
   useWordByWordCaptions?: boolean;
-  dialogueSegments?: Array<{ start: number; end: number; speaker: string; text: string }>;
+  dialogueSegments?: Array<{ start: number; end: number; speaker: string; text: string; imagePlaceholder?: string }>;
+  imagePlaceholders?: { [placeholder: string]: string };
 }
 
 export interface SubtitleSegment {
@@ -30,6 +32,7 @@ export interface VideoResponse {
 export class VideoService {
   private videoDir = path.join(process.cwd(), 'public', 'videos');
   private assetService: AssetService;
+  private cloudStorage: CloudStorageService;
 
   constructor() {
     // Ensure video directory exists
@@ -39,16 +42,30 @@ export class VideoService {
     
     // Initialize services
     this.assetService = new AssetService();
+    this.cloudStorage = new CloudStorageService();
   }
 
   async createVideoFromAudio(options: VideoGenerationOptions): Promise<VideoResponse> {
-    const { audioPath, outputPath, subtitleSegments, useWordByWordCaptions, dialogueSegments } = options;
+    const { audioPath, outputPath, subtitleSegments, useWordByWordCaptions, dialogueSegments, imagePlaceholders } = options;
     
     // Get asset paths (local or cloud)
     const assetPaths = await this.assetService.getAssetPaths();
     
     // Validate all required assets exist
     await this.validateRequiredAssets(audioPath, assetPaths);
+    
+    // Keep track of files to clean up
+    const filesToCleanup: string[] = [audioPath];
+    const imagesToCleanup: string[] = [];
+    
+    // Add placeholder images to cleanup list
+    if (imagePlaceholders) {
+      Object.values(imagePlaceholders).forEach(imagePath => {
+        if (imagePath) {
+          imagesToCleanup.push(imagePath);
+        }
+      });
+    }
     
     try {
       if (useWordByWordCaptions) {
@@ -62,7 +79,7 @@ export class VideoService {
           this.createWordByWordSubtitleFile(wordSubtitles, srtPath);
           
           // Create the final video
-          await this.createVideo(audioPath, srtPath, outputPath, assetPaths);
+          await this.createVideo(audioPath, srtPath, outputPath, assetPaths, imagePlaceholders || {});
           
           // Clean up subtitle file
           if (fs.existsSync(srtPath)) {
@@ -78,7 +95,7 @@ export class VideoService {
         this.createDialogueSubtitleFile(subtitleSegments, srtPath);
         
         // Create the final video
-        await this.createVideo(audioPath, srtPath, outputPath, assetPaths);
+        await this.createVideo(audioPath, srtPath, outputPath, assetPaths, imagePlaceholders || {});
         
         // Clean up subtitle file
         if (fs.existsSync(srtPath)) {
@@ -88,20 +105,53 @@ export class VideoService {
         throw new Error('Either subtitleSegments or useWordByWordCaptions must be provided');
       }
 
-      const filename = path.basename(outputPath);
-      const videoUrl = `/videos/${filename}`;
+      // Handle video storage based on environment
+      let finalVideoUrl: string;
+      let finalVideoPath: string;
+
+      if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
+        // Upload to cloud storage in production
+        console.log('Uploading video to cloud storage...');
+        const uploadResult = await this.cloudStorage.uploadVideo(outputPath);
+        
+        finalVideoUrl = uploadResult.publicUrl;
+        finalVideoPath = uploadResult.path;
+        
+        // Clean up local video file after successful upload
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+          console.log(`Cleaned up local video file: ${outputPath}`);
+        }
+      } else {
+        // Use local file in development
+        const filename = path.basename(outputPath);
+        finalVideoUrl = `/videos/${filename}`;
+        finalVideoPath = outputPath;
+      }
 
       // Clean up temporary cloud assets if used
       this.assetService.cleanupTempAssets();
 
+      // Clean up audio files and placeholder images after successful video generation
+      this.cleanupVideoAssets(filesToCleanup, imagesToCleanup);
+
       return {
-        video_url: videoUrl,
-        file_path: outputPath,
+        video_url: finalVideoUrl,
+        file_path: finalVideoPath,
         success: true
       };
     } catch (error) {
       // Clean up temporary cloud assets on error too
       this.assetService.cleanupTempAssets();
+      
+      // Clean up audio files and placeholder images on error as well
+      this.cleanupVideoAssets(filesToCleanup, imagesToCleanup);
+      
+      // Clean up local video file if it exists
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
+      }
+      
       console.error('Error creating video:', error);
       throw new Error(`Failed to create video: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -117,12 +167,15 @@ export class VideoService {
     await this.assetService.validateAssets(assetPaths);
   }
 
-  private async createVideo(audioPath: string, srtPath: string, outputPath: string, assetPaths: AssetPaths): Promise<void> {
+  private async createVideo(audioPath: string, srtPath: string, outputPath: string, assetPaths: AssetPaths, imagePlaceholders: { [placeholder: string]: string }): Promise<void> {
     // Get the duration of the audio to match the background video length
     const audioDuration = await this.getAudioDuration(audioPath);
     
     // Parse subtitle timing to know when each character speaks (using original file with speaker names)
     const characterTimings = await this.parseSubtitleTimings(srtPath);
+    
+    // Parse image placeholder timings from the SRT file
+    const imagePlaceholderTimings = await this.parseImagePlaceholderTimings(srtPath, imagePlaceholders, audioPath);
     
     // Check if this is word-by-word captions (indicated by filename)
     const isWordByWord = srtPath.includes('_words.srt');
@@ -141,9 +194,17 @@ export class VideoService {
       currentVideoStream = finalLabel;
     }
     
+    // Create image placeholder overlay filters (similar to character overlays)
+    const imagePlaceholderFilters = this.createImagePlaceholderOverlayFilters(imagePlaceholderTimings, currentVideoStream);
+    
+    if (imagePlaceholderFilters.filters) {
+      filterComplex += imagePlaceholderFilters.filters + ';';
+      currentVideoStream = imagePlaceholderFilters.finalStream;
+    }
+    
     if (isWordByWord) {
       // Use animated drawtext filters for word-by-word captions with pulsing effect
-      const drawtextFilters = this.createAnimatedDrawTextFilters(srtPath);
+      const drawtextFilters = this.createAnimatedDrawTextFilters(srtPath, {});
       if (drawtextFilters) {
         filterComplex += `${currentVideoStream}${drawtextFilters}[v]`;
       } else {
@@ -167,8 +228,18 @@ export class VideoService {
       }, 1000);
     }
     
-    // FFmpeg command with background video, character overlays, and subtitles/drawtext
-    const ffmpegCommand = `ffmpeg -threads 1 -stream_loop -1 -i "${assetPaths.backgroundVideo}" -i "${audioPath}" -i "${assetPaths.peterImage}" -i "${assetPaths.stewieImage}" -filter_complex "${filterComplex}" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
+    // Build FFmpeg command with all input streams
+    let ffmpegInputs = `-stream_loop -1 -i "${assetPaths.backgroundVideo}" -i "${audioPath}" -i "${assetPaths.peterImage}" -i "${assetPaths.stewieImage}"`;
+    
+    // Add placeholder image inputs
+    for (const timing of imagePlaceholderTimings) {
+      if (timing.imagePath) {
+        ffmpegInputs += ` -i "${timing.imagePath}"`;
+      }
+    }
+    
+    // FFmpeg command with background video, character overlays, placeholder images, and subtitles/drawtext
+    const ffmpegCommand = `ffmpeg -threads 1 ${ffmpegInputs} -filter_complex "${filterComplex}" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
     
     const { stdout, stderr } = await execAsync(ffmpegCommand);
     
@@ -192,6 +263,7 @@ export class VideoService {
       const endTimeStr = this.formatTime(Math.floor(segment.end));
       
       // Include speaker name in subtitle if available
+      // Note: Image placeholders are handled separately in the UI, not in video subtitles
       const subtitleText = segment.speaker ? `${segment.speaker}: ${segment.text}` : segment.text;
       
       srtContent += `${i + 1}\n${startTimeStr} --> ${endTimeStr}\n${subtitleText}\n\n`;
@@ -200,7 +272,7 @@ export class VideoService {
     fs.writeFileSync(filePath, srtContent);
   }
 
-  private createWordByWordSubtitleFile(wordSubtitles: Array<{ start: number; end: number; text: string; speaker?: string }>, filePath: string): void {
+  private createWordByWordSubtitleFile(wordSubtitles: Array<{ start: number; end: number; text: string; speaker?: string; imagePlaceholder?: string }>, filePath: string): void {
     let srtContent = '';
     
     for (let i = 0; i < wordSubtitles.length; i++) {
@@ -211,7 +283,14 @@ export class VideoService {
       // Include speaker name in subtitle for character overlay parsing
       const subtitleText = word.speaker ? `${word.speaker}: ${word.text}` : word.text;
       
-      srtContent += `${i + 1}\n${startTimeStr} --> ${endTimeStr}\n${subtitleText}\n\n`;
+      // Add image placeholder as a comment if it exists (for the first word of each segment)
+      let blockContent = `${i + 1}\n${startTimeStr} --> ${endTimeStr}\n${subtitleText}`;
+      if (word.imagePlaceholder) {
+        blockContent += `\n# IMAGE_PLACEHOLDER: ${word.imagePlaceholder}`;
+      }
+      blockContent += '\n\n';
+      
+      srtContent += blockContent;
     }
     
     fs.writeFileSync(filePath, srtContent);
@@ -245,16 +324,17 @@ export class VideoService {
     }
   }
 
-  private createWordTimingsFromScript(dialogueSegments: Array<{ start: number; end: number; speaker: string; text: string }>): Array<{ start: number; end: number; text: string; speaker?: string }> {
+  private createWordTimingsFromScript(dialogueSegments: Array<{ start: number; end: number; speaker: string; text: string; imagePlaceholder?: string }>): Array<{ start: number; end: number; text: string; speaker?: string; imagePlaceholder?: string }> {
     // Script-based word timing approach:
     // Instead of using Whisper to transcribe ElevenLabs audio (which can miss 30% of words),
     // we estimate word timing directly from the original script that generated the audio.
     // This ensures 100% accuracy since we use the exact text that created the speech.
+    // Note: Image placeholders are now included in video generation as text overlays
     
-    const wordSubtitles: Array<{ start: number; end: number; text: string; speaker?: string }> = [];
+    const wordSubtitles: Array<{ start: number; end: number; text: string; speaker?: string; imagePlaceholder?: string }> = [];
     
     for (const segment of dialogueSegments) {
-      // Split the text into words
+      // Split the text into words (image placeholders are handled separately)
       const words = segment.text.trim().split(/\s+/).filter(word => word.length > 0);
       
       if (words.length === 0) continue;
@@ -293,7 +373,9 @@ export class VideoService {
           start: currentTime,
           end: endTime,
           text: word,
-          speaker: segment.speaker
+          speaker: segment.speaker,
+          // Add image placeholder to the first word of each segment
+          imagePlaceholder: i === 0 ? segment.imagePlaceholder : undefined
         });
         
         currentTime = endTime;
@@ -303,7 +385,7 @@ export class VideoService {
     return wordSubtitles;
   }
 
-  private createAnimatedDrawTextFilters(srtPath: string): string {
+  private createAnimatedDrawTextFilters(srtPath: string, imagePlaceholders: { [placeholder: string]: string }): string {
     try {
       const srtContent = fs.readFileSync(srtPath, 'utf8');
       const blocks = srtContent.split('\n\n').filter(block => block.trim());
@@ -352,18 +434,86 @@ export class VideoService {
             const recoilEnd = startTime + pulseInDuration;
             const scaleExpression = `if(between(t,${startTime},${bouncePoint}),0.3+0.9*(t-${startTime})/${pulseInDuration*0.7},if(between(t,${bouncePoint},${recoilEnd}),1.2-0.2*(t-${bouncePoint})/${pulseInDuration*0.3},1.0))`;
             
-            // Create drawtext filter with pulsing animation
+            // Create drawtext filter with pulsing animation for dialogue
             drawtextFilters += `drawtext=text='${escapedText}':fontsize=132:fontcolor=white:bordercolor=black:borderw=8:x=(w-text_w)/2:y=h-900:alpha='${alphaExpression}':fontsize='132*${scaleExpression}':enable='between(t,${startTime},${endTime})',`;
           }
         }
       }
       
-      // Remove trailing comma and return
+      // Remove trailing comma
       return drawtextFilters ? drawtextFilters.slice(0, -1) : '';
     } catch (error) {
       console.error('Error creating animated drawtext filters:', error);
       return '';
     }
+  }
+
+  private createImagePlaceholderOverlayFilters(timings: Array<{ startTime: number; endTime: number; placeholder: string; imagePath?: string; inputIndex?: number }>, inputStream: string): { filters: string; finalStream: string } {
+    if (timings.length === 0) {
+      return { filters: '', finalStream: inputStream };
+    }
+    
+    // Animation parameters for fast top-to-bottom slide with subtle recoil
+    const slideAnimationDuration = 0.4; // Even faster animation
+    const slideInEarly = 0.1; // Less early start
+    const slideOutLate = 0.3; // Less late end
+    
+    let filters = '';
+    let currentInput = inputStream;
+    
+    // Process each timing individually with top-to-bottom swing animations
+    for (let i = 0; i < timings.length; i++) {
+      const timing = timings[i];
+      
+      if (!timing.imagePath || timing.inputIndex === undefined) {
+        continue;
+      }
+      
+      // Adjust timing for early slide-in and late slide-out
+      const animationStart = Math.max(0, timing.startTime - slideInEarly);
+      const animationEnd = timing.endTime + slideOutLate;
+      const slideInEnd = animationStart + slideAnimationDuration;
+      const slideOutStart = animationEnd - slideAnimationDuration;
+      
+      // Create a unique scaled version with motion blur for this specific overlay - DOUBLED SIZE
+      // Add motion blur during the slide-in phase
+      filters += `[${timing.inputIndex}:v]scale=800:600:force_original_aspect_ratio=decrease[img_${i}_scaled];`;
+      filters += `[img_${i}_scaled]boxblur=0:2:enable='between(t,${animationStart},${slideInEnd})'[img_${i}];`;
+      
+      // Create top-to-bottom sliding animation with minimal recoil
+      // Images slide in from top (-600) to final position (400) with slight overshoot
+      let yExpression;
+      
+      if (slideOutStart <= slideInEnd) {
+        // Short duration - slide in with minimal bounce and stay
+        const progress = `min(1,(t-${animationStart})/${slideAnimationDuration})`;
+        // Subtle bounce easing: slight overshoot then settle
+        const subtleBounceProgress = `${progress}*(2-${progress})*(1+0.1*sin(${progress}*3.14159*2))`;
+        yExpression = `if(between(t,${animationStart},${animationEnd}),-600+1000*${subtleBounceProgress},-600)`;
+      } else {
+        // Full animation: slide in with subtle bounce, stay, slide out fast
+        const slideInProgress = `(t-${animationStart})/${slideAnimationDuration}`;
+        // Reduced bounce with minimal overshoot and recoil
+        const subtleBounceEased = `${slideInProgress}*(2-${slideInProgress})*(1+0.08*sin(${slideInProgress}*3.14159*2))`;
+        const slideOutProgress = `(t-${slideOutStart})/${slideAnimationDuration}`;
+        const slideOutEased = `pow(${slideOutProgress},3)`; // Fast exit
+        
+        yExpression = `if(between(t,${animationStart},${slideInEnd}),-600+1000*${subtleBounceEased},if(between(t,${slideInEnd},${slideOutStart}),400,if(between(t,${slideOutStart},${animationEnd}),400-1000*${slideOutEased},-600)))`;
+      }
+      
+      // Position image in middle-top area with top-to-bottom animation
+      // Center horizontally: x=(W-w)/2, use smooth y animation with motion blur
+      filters += `${currentInput}[img_${i}]overlay=(W-w)/2:'${yExpression}':enable='between(t,${animationStart},${animationEnd})'[img_overlay_${i}];`;
+      currentInput = `[img_overlay_${i}]`;
+    }
+    
+    // Return the filters without the trailing semicolon and the final stream name
+    const finalFilters = filters.slice(0, -1);
+    
+    return { 
+      filters: finalFilters, 
+      finalStream: currentInput 
+    };
   }
 
   private formatTime(seconds: number): string {
@@ -538,5 +688,118 @@ export class VideoService {
       console.error('Error getting audio duration:', error);
       throw new Error(`Failed to get audio duration: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private async parseImagePlaceholderTimings(srtPath: string, imagePlaceholders: { [placeholder: string]: string }, audioPath: string): Promise<Array<{ startTime: number; endTime: number; placeholder: string; imagePath?: string; inputIndex?: number }>> {
+    try {
+      const srtContent = fs.readFileSync(srtPath, 'utf8');
+      const blocks = srtContent.split('\n\n').filter(block => block.trim());
+      
+      let imagePlaceholderSegments: Array<{ startTime: number; endTime: number; placeholder: string; imagePath?: string; inputIndex?: number }> = [];
+      
+      // First pass: collect all image placeholder segments
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        if (lines.length >= 3) {
+          const timeLine = lines[1];
+          
+          // Check for image placeholder comment
+          const imagePlaceholderLine = lines.find(line => line.startsWith('# IMAGE_PLACEHOLDER:'));
+          if (!imagePlaceholderLine) continue;
+          
+          const imagePlaceholder = imagePlaceholderLine.replace('# IMAGE_PLACEHOLDER:', '').trim();
+          if (!imagePlaceholder) continue;
+          
+          // Parse time format: 00:00:00,000 --> 00:00:05,000
+          const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+          if (timeMatch) {
+            const startTime = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 1000;
+            
+            // Check if we have an uploaded image for this placeholder
+            const imagePath = imagePlaceholders[imagePlaceholder];
+            let absoluteImagePath: string | undefined;
+            
+            if (imagePath && fs.existsSync(path.join(process.cwd(), imagePath))) {
+              absoluteImagePath = path.join(process.cwd(), imagePath);
+            }
+            
+            imagePlaceholderSegments.push({
+              startTime,
+              endTime: startTime, // We'll calculate the actual end time in the next step
+              placeholder: imagePlaceholder,
+              imagePath: absoluteImagePath
+            });
+          }
+        }
+      }
+      
+      // Sort segments by start time
+      imagePlaceholderSegments.sort((a, b) => a.startTime - b.startTime);
+      
+      // Second pass: calculate end times and input indices
+      const audioDuration = await this.getAudioDuration(audioPath);
+      let inputIndex = 4; // Start after background(0), audio(1), peter(2), stewie(3)
+      
+      for (let i = 0; i < imagePlaceholderSegments.length; i++) {
+        const currentSegment = imagePlaceholderSegments[i];
+        const nextSegment = imagePlaceholderSegments[i + 1];
+        
+        // Assign input index if image exists
+        if (currentSegment.imagePath) {
+          currentSegment.inputIndex = inputIndex++;
+        }
+        
+        if (nextSegment) {
+          // End this placeholder when the next one starts
+          currentSegment.endTime = nextSegment.startTime;
+        } else {
+          // Last placeholder - make it last until the end of the dialogue
+          currentSegment.endTime = audioDuration;
+        }
+        
+        // Ensure minimum duration of 0.5 seconds
+        if (currentSegment.endTime - currentSegment.startTime < 0.5) {
+          currentSegment.endTime = currentSegment.startTime + 0.5;
+        }
+      }
+      
+      const finalSegments = imagePlaceholderSegments.filter(segment => segment.imagePath);
+      
+      return finalSegments; // Only return segments with actual images
+    } catch (error) {
+      console.error('Error parsing image placeholder timings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Clean up audio files and placeholder images after video generation
+   */
+  private cleanupVideoAssets(audioFiles: string[], imageFiles: string[]): void {
+    // Clean up audio files
+    audioFiles.forEach(audioPath => {
+      if (fs.existsSync(audioPath)) {
+        try {
+          fs.unlinkSync(audioPath);
+        } catch (error) {
+          console.warn(`Failed to cleanup audio file: ${audioPath}`, error);
+        }
+      }
+    });
+
+    // Clean up placeholder images
+    imageFiles.forEach(imagePath => {
+      if (imagePath && fs.existsSync(imagePath)) {
+        try {
+          // Convert relative path to absolute path if needed
+          const fullPath = imagePath.startsWith('/') ? imagePath : path.join(process.cwd(), imagePath);
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+          }
+        } catch (error) {
+          console.warn(`Failed to cleanup placeholder image: ${imagePath}`, error);
+        }
+      }
+    });
   }
 } 

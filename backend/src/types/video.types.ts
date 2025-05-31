@@ -1,8 +1,7 @@
 import { DialogueLine } from './content.types';
 
 export interface VideoGenerationRequest {
-  text: string;
-  dialogue?: DialogueLine[];
+  dialogue: DialogueLine[];
 }
 
 export interface VideoGenerationResponse {

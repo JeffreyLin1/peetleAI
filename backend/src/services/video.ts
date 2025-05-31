@@ -8,7 +8,6 @@ const execAsync = promisify(exec);
 
 export interface VideoGenerationOptions {
   audioPath: string;
-  text?: string;
   outputPath: string;
   subtitleSegments?: SubtitleSegment[];
   useWordByWordCaptions?: boolean;
@@ -43,7 +42,7 @@ export class VideoService {
   }
 
   async createVideoFromAudio(options: VideoGenerationOptions): Promise<VideoResponse> {
-    const { audioPath, text, outputPath, subtitleSegments, useWordByWordCaptions, dialogueSegments } = options;
+    const { audioPath, outputPath, subtitleSegments, useWordByWordCaptions, dialogueSegments } = options;
     
     // Get asset paths (local or cloud)
     const assetPaths = await this.assetService.getAssetPaths();
@@ -85,20 +84,8 @@ export class VideoService {
         if (fs.existsSync(srtPath)) {
           fs.unlinkSync(srtPath);
         }
-      } else if (text) {
-        // Create single voice video with subtitles
-        const srtPath = audioPath.replace('.mp3', '.srt');
-        this.createSubtitleFile(text, srtPath);
-        
-        // Create the final video
-        await this.createVideo(audioPath, srtPath, outputPath, assetPaths);
-        
-        // Clean up subtitle file
-        if (fs.existsSync(srtPath)) {
-          fs.unlinkSync(srtPath);
-        }
       } else {
-        throw new Error('Either text, subtitleSegments, or useWordByWordCaptions must be provided');
+        throw new Error('Either subtitleSegments or useWordByWordCaptions must be provided');
       }
 
       const filename = path.basename(outputPath);
@@ -194,38 +181,6 @@ export class VideoService {
     if (stats.size === 0) {
       throw new Error('Video file is empty');
     }
-  }
-
-  private createSubtitleFile(text: string, filePath: string): void {
-    // Create a simple SRT subtitle file
-    // Split long text into multiple subtitle segments for better readability
-    const maxCharsPerLine = 60;
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-    
-    for (const word of words) {
-      if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
-        currentLine = currentLine ? currentLine + ' ' + word : word;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    
-    // Create subtitle segments (each showing for 5 seconds)
-    let srtContent = '';
-    for (let i = 0; i < lines.length; i++) {
-      const startTime = i * 5;
-      const endTime = (i + 1) * 5;
-      const startTimeStr = this.formatTime(startTime);
-      const endTimeStr = this.formatTime(endTime);
-      
-      srtContent += `${i + 1}\n${startTimeStr} --> ${endTimeStr}\n${lines[i]}\n\n`;
-    }
-    
-    fs.writeFileSync(filePath, srtContent);
   }
 
   private createDialogueSubtitleFile(segments: SubtitleSegment[], filePath: string): void {

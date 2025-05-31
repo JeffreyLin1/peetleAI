@@ -3,9 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { ElevenLabsService } from '../services/elevenlabs';
 import { VideoGenerationRequest, VideoGenerationResponse, VideoFile, VideoListResponse } from '../types/video.types';
-import { validateText, ValidationError } from '../utils/validation';
 import { sendSuccess, sendError, sendValidationError, sendNotFound } from '../utils/response';
 import { ERROR_MESSAGES, HTTP_STATUS } from '../config/constants';
+import { ValidationError } from '../utils/validation';
 
 export class VideoController {
   private elevenLabsService: ElevenLabsService;
@@ -22,22 +22,15 @@ export class VideoController {
    */
   async generateVideo(req: Request, res: Response): Promise<void> {
     try {
-      const { text, dialogue }: VideoGenerationRequest = req.body;
+      const { dialogue }: VideoGenerationRequest = req.body;
 
-      // Validate input
-      const validatedText = validateText(text);
-
-      let speechResponse;
-
-      // Generate video based on whether we have dialogue or single text
-      if (dialogue && Array.isArray(dialogue) && dialogue.length > 0) {
-        speechResponse = await this.elevenLabsService.generateDialogueSpeech(dialogue);
-      } else {
-        speechResponse = await this.elevenLabsService.generateSpeech(
-          validatedText,
-          'peter-griffin'
-        );
+      // Validate that dialogue is provided
+      if (!dialogue || !Array.isArray(dialogue) || dialogue.length === 0) {
+        throw new ValidationError('Dialogue is required and must be a non-empty array');
       }
+
+      // Generate video with dialogue
+      const speechResponse = await this.elevenLabsService.generateDialogueSpeech(dialogue);
 
       if (!speechResponse.success || !speechResponse.video_url) {
         throw new Error('No video data received from speech service');

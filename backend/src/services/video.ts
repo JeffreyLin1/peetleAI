@@ -137,12 +137,8 @@ export class VideoService {
     // Parse subtitle timing to know when each character speaks (using original file with speaker names)
     const characterTimings = await this.parseSubtitleTimings(srtPath);
     
-    // Create clean subtitle file without speaker names for video rendering
-    const cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
-    this.createCleanSubtitleFile(srtPath, cleanSrtPath);
-    
-    // Escape the clean subtitle path for FFmpeg
-    const escapedSrtPath = cleanSrtPath.replace(/'/g, "'\\''");
+    // Check if this is word-by-word captions (indicated by filename)
+    const isWordByWord = srtPath.includes('_words.srt');
     
     // Build the complete filter complex
     let filterComplex = '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg];';
@@ -150,16 +146,41 @@ export class VideoService {
     // Create character overlay filters based on dialogue timing
     const characterFilters = this.createCharacterOverlayFilters(characterTimings, audioDuration);
     
+    let currentVideoStream = '[bg]';
     if (characterFilters) {
       // Add character overlays and get the final video stream
       const finalLabel = characterFilters.match(/\[overlay_\d+\]$/)?.[0] || '[bg]';
-      filterComplex += characterFilters + `;${finalLabel}subtitles='${escapedSrtPath}':force_style='Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1'[v]`;
-    } else {
-      // No character overlays, just add subtitles to background
-      filterComplex += '[bg]subtitles=\'' + escapedSrtPath + '\':force_style=\'Fontsize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=150,Bold=1\'[v]';
+      filterComplex += characterFilters + ';';
+      currentVideoStream = finalLabel;
     }
     
-    // FFmpeg command with background video, character overlays, and subtitles
+    if (isWordByWord) {
+      // Use animated drawtext filters for word-by-word captions with pulsing effect
+      const drawtextFilters = this.createAnimatedDrawTextFilters(srtPath);
+      if (drawtextFilters) {
+        filterComplex += `${currentVideoStream}${drawtextFilters}[v]`;
+      } else {
+        filterComplex += `${currentVideoStream}copy[v]`;
+      }
+    } else {
+      // Use traditional subtitles for dialogue/single voice
+      const cleanSrtPath = srtPath.replace('.srt', '_clean.srt');
+      this.createCleanSubtitleFile(srtPath, cleanSrtPath);
+      
+      // Escape the clean subtitle path for FFmpeg
+      const escapedSrtPath = cleanSrtPath.replace(/'/g, "'\\''");
+      
+      filterComplex += `${currentVideoStream}subtitles='${escapedSrtPath}':force_style='Fontsize=172,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=8,Alignment=2,MarginV=300,Bold=1'[v]`;
+      
+      // Clean up the clean subtitle file after FFmpeg command
+      setTimeout(() => {
+        if (fs.existsSync(cleanSrtPath)) {
+          fs.unlinkSync(cleanSrtPath);
+        }
+      }, 1000);
+    }
+    
+    // FFmpeg command with background video, character overlays, and subtitles/drawtext
     const ffmpegCommand = `ffmpeg -threads 1 -stream_loop -1 -i "${assetPaths.backgroundVideo}" -i "${audioPath}" -i "${assetPaths.peterImage}" -i "${assetPaths.stewieImage}" -filter_complex "${filterComplex}" -map "[v]" -map 1:a -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -t ${audioDuration} -y "${outputPath}"`;
     
     const { stdout, stderr } = await execAsync(ffmpegCommand);
@@ -172,11 +193,6 @@ export class VideoService {
     const stats = fs.statSync(outputPath);
     if (stats.size === 0) {
       throw new Error('Video file is empty');
-    }
-    
-    // Clean up the clean subtitle file
-    if (fs.existsSync(cleanSrtPath)) {
-      fs.unlinkSync(cleanSrtPath);
     }
   }
 
@@ -288,13 +304,19 @@ export class VideoService {
       
       if (words.length === 0) continue;
       
+      // Clean words for display (remove punctuation except ! and ?)
+      const cleanWords = words.map(word => {
+        // Remove all punctuation except ! and ?
+        return word.replace(/[^\w!?]/g, '').trim();
+      }).filter(word => word.length > 0); // Remove empty strings after cleaning
+      
       // Calculate timing for each word within this segment
       const segmentDuration = segment.end - segment.start;
-      const averageWordDuration = segmentDuration / words.length;
+      const averageWordDuration = segmentDuration / cleanWords.length;
       
       // Add some variation to make it feel more natural
       // Shorter words get less time, longer words get more time
-      const wordDurations = words.map(word => {
+      const wordDurations = cleanWords.map(word => {
         const baseTime = averageWordDuration;
         const lengthFactor = Math.min(word.length / 6, 1.5); // Normalize word length
         return baseTime * (0.7 + (lengthFactor * 0.6)); // Range: 0.7x to 1.3x average
@@ -307,8 +329,8 @@ export class VideoService {
       
       // Create word timing entries
       let currentTime = segment.start;
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i];
+      for (let i = 0; i < cleanWords.length; i++) {
+        const word = cleanWords[i];
         const duration = normalizedDurations[i];
         const endTime = currentTime + duration;
         
@@ -324,6 +346,69 @@ export class VideoService {
     }
     
     return wordSubtitles;
+  }
+
+  private createAnimatedDrawTextFilters(srtPath: string): string {
+    try {
+      const srtContent = fs.readFileSync(srtPath, 'utf8');
+      const blocks = srtContent.split('\n\n').filter(block => block.trim());
+      
+      let drawtextFilters = '';
+      
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        if (lines.length >= 3) {
+          const timeLine = lines[1];
+          const textLine = lines[2];
+          
+          // Parse time format: 00:00:00,000 --> 00:00:05,000
+          const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+          if (timeMatch) {
+            const startTime = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 1000;
+            const endTime = parseInt(timeMatch[5]) * 3600 + parseInt(timeMatch[6]) * 60 + parseInt(timeMatch[7]) + parseInt(timeMatch[8]) / 1000;
+            
+            // Remove speaker prefix from text line for display
+            const cleanText = textLine.replace(/^(Peter|Stewie):\s*/, '');
+            
+            // Escape text for FFmpeg (escape single quotes and backslashes)
+            const escapedText = cleanText.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            
+            // Create pulsing animation effect with bounce/recoil
+            // The word pulses in over 0.15 seconds, stays normal, then fades out over 0.1 seconds
+            const duration = endTime - startTime;
+            const pulseInDuration = Math.min(0.2, duration * 0.4); // Slightly longer for bounce effect
+            const pulseOutDuration = Math.min(0.1, duration * 0.2); // 20% of duration or 0.1s max
+            const pulseInEnd = startTime + pulseInDuration;
+            const pulseOutStart = endTime - pulseOutDuration;
+            
+            // Alpha animation: 0 -> 1 (pulse in) -> 1 (stay) -> 0 (fade out)
+            let alphaExpression = '';
+            if (pulseOutStart <= pulseInEnd) {
+              // Short duration - just pulse in and out
+              const midPoint = startTime + duration / 2;
+              alphaExpression = `if(between(t,${startTime},${midPoint}),(t-${startTime})/${pulseInDuration},if(between(t,${midPoint},${endTime}),1-(t-${midPoint})/${pulseOutDuration},0))`;
+            } else {
+              // Full animation: pulse in, stay, fade out
+              alphaExpression = `if(between(t,${startTime},${pulseInEnd}),(t-${startTime})/${pulseInDuration},if(between(t,${pulseInEnd},${pulseOutStart}),1,if(between(t,${pulseOutStart},${endTime}),1-(t-${pulseOutStart})/${pulseOutDuration},0)))`;
+            }
+            
+            // Scale animation with bounce: 0.3x -> 1.2x -> 1.0x (pop and recoil effect)
+            const bouncePoint = startTime + pulseInDuration * 0.7; // 70% through the pulse-in
+            const recoilEnd = startTime + pulseInDuration;
+            const scaleExpression = `if(between(t,${startTime},${bouncePoint}),0.3+0.9*(t-${startTime})/${pulseInDuration*0.7},if(between(t,${bouncePoint},${recoilEnd}),1.2-0.2*(t-${bouncePoint})/${pulseInDuration*0.3},1.0))`;
+            
+            // Create drawtext filter with pulsing animation
+            drawtextFilters += `drawtext=text='${escapedText}':fontsize=132:fontcolor=white:bordercolor=black:borderw=8:x=(w-text_w)/2:y=h-900:alpha='${alphaExpression}':fontsize='132*${scaleExpression}':enable='between(t,${startTime},${endTime})',`;
+          }
+        }
+      }
+      
+      // Remove trailing comma and return
+      return drawtextFilters ? drawtextFilters.slice(0, -1) : '';
+    } catch (error) {
+      console.error('Error creating animated drawtext filters:', error);
+      return '';
+    }
   }
 
   private formatTime(seconds: number): string {

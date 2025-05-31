@@ -64,7 +64,6 @@ Create a short dialogue (4-6 exchanges total) where:
 3. They go back and forth with Stewie asking follow-ups and Peter responding
 4. Keep it educational but entertaining
 5. Each line should be 1-2 sentences max
-6. End with Peter giving a final, enthusiastic summary
 
 Format your response as a dialogue with clear speaker labels:
 Peter: [text]

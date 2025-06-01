@@ -6,14 +6,17 @@ import { VideoGenerationRequest, VideoGenerationResponse, VideoFile, VideoListRe
 import { sendSuccess, sendError, sendValidationError, sendNotFound } from '../utils/response';
 import { ERROR_MESSAGES, HTTP_STATUS } from '../config/constants';
 import { ValidationError } from '../utils/validation';
+import { CloudStorageService } from '../services/storage';
 
 export class VideoController {
   private elevenLabsService: ElevenLabsService;
   private videosDir: string;
+  private cloudStorage: CloudStorageService;
 
   constructor() {
     this.elevenLabsService = new ElevenLabsService();
     this.videosDir = path.join(process.cwd(), 'public', 'videos');
+    this.cloudStorage = new CloudStorageService();
   }
 
   /**
@@ -109,6 +112,19 @@ export class VideoController {
   async streamVideo(req: Request, res: Response): Promise<void> {
     try {
       const { filename } = req.params;
+      
+      // In production with cloud storage, redirect to cloud URL
+      if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
+        const cloudUrl = this.cloudStorage.getVideoPublicUrl(filename);
+        
+        if (cloudUrl) {
+          // Redirect to the cloud storage URL
+          res.redirect(302, cloudUrl);
+          return;
+        }
+      }
+      
+      // Fallback to local file serving (development or if cloud storage fails)
       const videoPath = path.join(this.videosDir, filename);
 
       if (!fs.existsSync(videoPath)) {

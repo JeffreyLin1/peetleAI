@@ -268,6 +268,22 @@ export class CloudStorageService {
   }
 
   /**
+   * Get public URL for a video file
+   */
+  getVideoPublicUrl(filename: string): string | null {
+    try {
+      const { data } = this.supabase.storage
+        .from('generated-content')
+        .getPublicUrl(`videos/${filename}`);
+      
+      return data?.publicUrl || null;
+    } catch (error) {
+      console.error('Error getting video public URL:', error);
+      return null;
+    }
+  }
+
+  /**
    * Test cloud storage connection
    */
   async testConnection(): Promise<boolean> {

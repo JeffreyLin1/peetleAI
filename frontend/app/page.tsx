@@ -138,8 +138,19 @@ export default function Home() {
       const videoData = await api.video.generate(dialogue, uploadedImages);
 
       if (videoData.success && videoData.data) {
-        const fullVideoUrl = `${API_BASE_URL}${videoData.data.videoUrl}`;
-        const filename = videoData.data.videoUrl.split('/').pop();
+        // Handle both local development URLs and production cloud storage URLs
+        const videoUrl = videoData.data.videoUrl;
+        let fullVideoUrl: string;
+        
+        if (videoUrl.startsWith('http')) {
+          // Production: videoUrl is already a complete cloud storage URL
+          fullVideoUrl = videoUrl;
+        } else {
+          // Development: videoUrl is a relative path like "/videos/filename.mp4"
+          fullVideoUrl = `${API_BASE_URL}${videoUrl}`;
+        }
+        
+        const filename = videoUrl.split('/').pop();
         const streamVideoUrl = api.video.stream(filename || '');
         
         setVideoUrl(fullVideoUrl);

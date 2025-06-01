@@ -57,7 +57,7 @@ export class OpenAIService {
 
 Peter is enthusiastic, and explains things in an in-depth yet simple way. He uses simple language and gets excited about topics.
 
-Stewie is intelligent, sophisticated, and asks probing questions. He speaks in a more advanced vocabulary.
+Stewie is intelligent, sophisticated, and asks probing questions.
 
 Create a short dialogue (4-6 exchanges total) where:
 1. Stewie starts by asking a question about the topic

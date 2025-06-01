@@ -18,7 +18,7 @@ export interface StorageConfig {
 }
 
 export class CloudStorageService {
-  private supabase: SupabaseClient;
+  private supabase: SupabaseClient | null = null;
   
   // Storage configurations for different asset types
   private readonly storageConfigs = {
@@ -52,11 +52,26 @@ export class CloudStorageService {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+    console.log('CloudStorageService initialization:', {
+      hasUrl: Boolean(supabaseUrl),
+      hasKey: Boolean(supabaseServiceKey),
+      nodeEnv: process.env.NODE_ENV,
+      urlPreview: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'undefined'
+    });
+
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase configuration for cloud storage');
+      console.warn('Missing Supabase configuration for cloud storage - falling back to local storage');
+      // Don't throw error, just log warning and continue without cloud storage
+      return;
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseServiceKey);
+    try {
+      this.supabase = createClient(supabaseUrl, supabaseServiceKey);
+      console.log('Supabase client created successfully');
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error);
+      throw new Error('Failed to initialize cloud storage service');
+    }
   }
 
   /**
@@ -91,6 +106,10 @@ export class CloudStorageService {
    * Generic file upload method with validation and security
    */
   private async uploadFile(filePath: string, type: keyof typeof this.storageConfigs, userId?: string): Promise<UploadResult> {
+    if (!this.supabase) {
+      throw new Error('Cloud storage not configured');
+    }
+    
     const config = this.storageConfigs[type];
     
     // Validate file exists
@@ -154,6 +173,11 @@ export class CloudStorageService {
    * Delete a file from cloud storage
    */
   async deleteFile(bucket: string, filePath: string): Promise<boolean> {
+    if (!this.supabase) {
+      console.warn('Supabase not configured, cannot delete file');
+      return false;
+    }
+    
     try {
       const { error } = await this.supabase.storage
         .from(bucket)
@@ -238,6 +262,11 @@ export class CloudStorageService {
    * Get storage usage statistics
    */
   async getStorageStats(bucket: string): Promise<{ totalFiles: number; totalSize: number }> {
+    if (!this.supabase) {
+      console.warn('Supabase not configured, cannot get storage stats');
+      return { totalFiles: 0, totalSize: 0 };
+    }
+    
     try {
       const { data, error } = await this.supabase.storage
         .from(bucket)
@@ -264,13 +293,18 @@ export class CloudStorageService {
    * Check if cloud storage is properly configured
    */
   isConfigured(): boolean {
-    return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+    return Boolean(this.supabase && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
   }
 
   /**
    * Get public URL for a video file
    */
   getVideoPublicUrl(filename: string): string | null {
+    if (!this.supabase) {
+      console.warn('Supabase not configured, cannot get video public URL');
+      return null;
+    }
+    
     try {
       const { data } = this.supabase.storage
         .from('generated-content')
@@ -284,9 +318,34 @@ export class CloudStorageService {
   }
 
   /**
+   * Get public URL for any file in any bucket
+   */
+  getPublicUrl(bucket: string, filePath: string): string | null {
+    if (!this.supabase) {
+      console.warn('Supabase not configured, cannot get public URL');
+      return null;
+    }
+    
+    try {
+      const { data } = this.supabase.storage
+        .from(bucket)
+        .getPublicUrl(filePath);
+      
+      return data?.publicUrl || null;
+    } catch (error) {
+      console.error('Error getting public URL:', error);
+      return null;
+    }
+  }
+
+  /**
    * Test cloud storage connection
    */
   async testConnection(): Promise<boolean> {
+    if (!this.supabase) {
+      return false;
+    }
+    
     try {
       // Try to list files in the generated-content bucket
       const { error } = await this.supabase.storage

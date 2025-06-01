@@ -113,13 +113,55 @@ export class VideoController {
     try {
       const { filename } = req.params;
       
-      // In production with cloud storage, redirect to cloud URL
+      // In production with cloud storage, proxy the cloud URL
       if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
         const cloudUrl = this.cloudStorage.getVideoPublicUrl(filename);
         
         if (cloudUrl) {
-          // Redirect to the cloud storage URL
-          res.redirect(302, cloudUrl);
+          // Proxy the cloud storage content instead of redirecting
+          const https = require('https');
+          const http = require('http');
+          
+          const client = cloudUrl.startsWith('https:') ? https : http;
+          
+          // Forward range headers if present
+          const headers: any = {};
+          if (req.headers.range) {
+            headers.range = req.headers.range;
+          }
+          
+          const proxyReq = client.get(cloudUrl, { headers }, (proxyRes: any) => {
+            // Forward status code and headers
+            res.status(proxyRes.statusCode);
+            
+            // Forward relevant headers
+            if (proxyRes.headers['content-type']) {
+              res.setHeader('Content-Type', proxyRes.headers['content-type']);
+            }
+            if (proxyRes.headers['content-length']) {
+              res.setHeader('Content-Length', proxyRes.headers['content-length']);
+            }
+            if (proxyRes.headers['content-range']) {
+              res.setHeader('Content-Range', proxyRes.headers['content-range']);
+            }
+            if (proxyRes.headers['accept-ranges']) {
+              res.setHeader('Accept-Ranges', proxyRes.headers['accept-ranges']);
+            }
+            
+            // Set CORS headers
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Range');
+            
+            // Pipe the response
+            proxyRes.pipe(res);
+          });
+          
+          proxyReq.on('error', (error: Error) => {
+            console.error('Error proxying video:', error);
+            sendError(res, 'Failed to stream video from cloud storage');
+          });
+          
           return;
         }
       }

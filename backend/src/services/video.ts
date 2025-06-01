@@ -719,8 +719,25 @@ export class VideoService {
             const imagePath = imagePlaceholders[imagePlaceholder];
             let absoluteImagePath: string | undefined;
             
-            if (imagePath && fs.existsSync(path.join(process.cwd(), imagePath))) {
-              absoluteImagePath = path.join(process.cwd(), imagePath);
+            if (imagePath) {
+              if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
+                // In production, download the cloud image temporarily for FFmpeg
+                try {
+                  const cloudImageUrl = this.getCloudImageUrl(imagePath);
+                  if (cloudImageUrl) {
+                    const tempImagePath = await this.downloadImageTemporarily(cloudImageUrl, imagePlaceholder);
+                    absoluteImagePath = tempImagePath;
+                  }
+                } catch (error) {
+                  console.error(`Failed to download cloud image for placeholder ${imagePlaceholder}:`, error);
+                }
+              } else {
+                // In development, use local file
+                const localPath = path.join(process.cwd(), imagePath);
+                if (fs.existsSync(localPath)) {
+                  absoluteImagePath = localPath;
+                }
+              }
             }
             
             imagePlaceholderSegments.push({
@@ -773,6 +790,65 @@ export class VideoService {
   }
 
   /**
+   * Get cloud image URL from storage path
+   */
+  private getCloudImageUrl(imagePath: string): string | null {
+    try {
+      if (imagePath.startsWith('http')) {
+        return imagePath; // Already a full URL
+      }
+      
+      // Construct Supabase URL for the image
+      const bucket = imagePath.startsWith('placeholders/') ? 'user-content' : 'generated-content';
+      return this.cloudStorage.getPublicUrl(bucket, imagePath);
+    } catch (error) {
+      console.error('Error getting cloud image URL:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Download cloud image temporarily for FFmpeg processing
+   */
+  private async downloadImageTemporarily(imageUrl: string, placeholder: string): Promise<string> {
+    const https = require('https');
+    const http = require('http');
+    
+    return new Promise((resolve, reject) => {
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const tempFilePath = path.join(tempDir, `${placeholder}_${Date.now()}.jpg`);
+      const file = fs.createWriteStream(tempFilePath);
+      
+      const client = imageUrl.startsWith('https:') ? https : http;
+      
+      client.get(imageUrl, (response: any) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download image: ${response.statusCode}`));
+          return;
+        }
+        
+        response.pipe(file);
+        
+        file.on('finish', () => {
+          file.close();
+          resolve(tempFilePath);
+        });
+        
+        file.on('error', (err: Error) => {
+          fs.unlink(tempFilePath, () => {}); // Delete the file on error
+          reject(err);
+        });
+      }).on('error', (err: Error) => {
+        reject(err);
+      });
+    });
+  }
+
+  /**
    * Clean up audio files and placeholder images after video generation
    */
   private cleanupVideoAssets(audioFiles: string[], imageFiles: string[]): void {
@@ -801,5 +877,27 @@ export class VideoService {
         }
       }
     });
+
+    // Clean up temporary downloaded images (in production)
+    if (process.env.NODE_ENV === 'production') {
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (fs.existsSync(tempDir)) {
+        try {
+          const tempFiles = fs.readdirSync(tempDir);
+          tempFiles.forEach(file => {
+            if (file.endsWith('.jpg') || file.endsWith('.png')) {
+              const tempFilePath = path.join(tempDir, file);
+              try {
+                fs.unlinkSync(tempFilePath);
+              } catch (error) {
+                console.warn(`Failed to cleanup temp image: ${tempFilePath}`, error);
+              }
+            }
+          });
+        } catch (error) {
+          console.warn('Failed to cleanup temp directory:', error);
+        }
+      }
+    }
   }
 } 

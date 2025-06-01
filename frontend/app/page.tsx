@@ -138,23 +138,12 @@ export default function Home() {
       const videoData = await api.video.generate(dialogue, uploadedImages);
 
       if (videoData.success && videoData.data) {
-        // Use the video URL directly from the response
-        const videoUrl = videoData.data.videoUrl;
+        const fullVideoUrl = `${API_BASE_URL}${videoData.data.videoUrl}`;
+        const filename = videoData.data.videoUrl.split('/').pop();
+        const streamVideoUrl = api.video.stream(filename || '');
         
-        // Check if it's a cloud storage URL (starts with http) or local path
-        if (videoUrl.startsWith('http')) {
-          // Cloud storage URL - use directly
-          setVideoUrl(videoUrl);
-          setFallbackVideoUrl(videoUrl);
-        } else {
-          // Local path - construct full URLs
-          const fullVideoUrl = `${API_BASE_URL}${videoUrl}`;
-          const filename = videoUrl.split('/').pop();
-          const streamVideoUrl = api.video.stream(filename || '');
-          
-          setVideoUrl(fullVideoUrl);
-          setFallbackVideoUrl(streamVideoUrl);
-        }
+        setVideoUrl(fullVideoUrl);
+        setFallbackVideoUrl(streamVideoUrl);
       } else {
         throw new Error('Invalid video response format');
       }

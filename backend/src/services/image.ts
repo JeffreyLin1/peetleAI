@@ -49,11 +49,17 @@ export class ImageService {
       // Handle storage based on environment
       if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured() && userId) {
         // Upload to cloud storage in production
+        console.log('Uploading placeholder image to cloud storage...');
         const uploadResult = await this.cloudStorage.uploadPlaceholderImage(imagePath, userId);
         
-        // Return the local path for video processing (will be cleaned up after video generation)
-        // The cloud URL is not needed for FFmpeg processing
-        return imagePath;
+        // Clean up local file after successful upload
+        if (fs.existsSync(imagePath)) {
+          fs.unlinkSync(imagePath);
+          console.log(`Cleaned up local placeholder image: ${imagePath}`);
+        }
+        
+        // Return cloud storage path
+        return uploadResult.path;
       } else {
         // Return relative path for local development
         return path.join('public', 'images', 'placeholders', filename);

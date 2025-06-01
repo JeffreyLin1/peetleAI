@@ -222,16 +222,22 @@ export class AssetService {
 
   // Cleanup temporary downloaded files
   cleanupTempAssets(): void {
-    if (fs.existsSync(this.tempDir)) {
-      const files = fs.readdirSync(this.tempDir);
-      for (const file of files) {
-        const filePath = path.join(this.tempDir, file);
-        try {
-          fs.unlinkSync(filePath);
-        } catch (error) {
-          console.warn(`Failed to cleanup temp asset: ${filePath}`);
+    try {
+      if (fs.existsSync(this.tempDir)) {
+        const files = fs.readdirSync(this.tempDir);
+        for (const file of files) {
+          const filePath = path.join(this.tempDir, file);
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          } catch (error) {
+            console.warn(`Failed to cleanup temp asset: ${filePath}`, error);
+          }
         }
       }
+    } catch (error) {
+      console.warn('Failed to cleanup temp assets directory:', error);
     }
   }
 } 

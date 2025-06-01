@@ -111,7 +111,6 @@ export class VideoService {
 
       if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
         // Upload to cloud storage in production
-        console.log('Uploading video to cloud storage...');
         const uploadResult = await this.cloudStorage.uploadVideo(outputPath);
         
         finalVideoUrl = uploadResult.publicUrl;
@@ -120,7 +119,6 @@ export class VideoService {
         // Clean up local video file after successful upload
         if (fs.existsSync(outputPath)) {
           fs.unlinkSync(outputPath);
-          console.log(`Cleaned up local video file: ${outputPath}`);
         }
       } else {
         // Use local file in development
@@ -789,12 +787,25 @@ export class VideoService {
 
     // Clean up placeholder images
     imageFiles.forEach(imagePath => {
-      if (imagePath && fs.existsSync(imagePath)) {
+      if (imagePath) {
         try {
-          // Convert relative path to absolute path if needed
-          const fullPath = imagePath.startsWith('/') ? imagePath : path.join(process.cwd(), imagePath);
-          if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
+          if (process.env.NODE_ENV === 'production' && this.cloudStorage.isConfigured()) {
+            // In production, imagePath might be a cloud storage path
+            if (imagePath.startsWith('http') || imagePath.includes('supabase')) {
+              // Skip cloud URLs - they're managed by the cloud storage service
+              return;
+            }
+            // For local paths that need to be cleaned up
+            const fullPath = imagePath.startsWith('/') ? imagePath : path.join(process.cwd(), imagePath);
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+            }
+          } else {
+            // Development - clean up local files
+            const fullPath = imagePath.startsWith('/') ? imagePath : path.join(process.cwd(), imagePath);
+            if (fs.existsSync(fullPath)) {
+              fs.unlinkSync(fullPath);
+            }
           }
         } catch (error) {
           console.warn(`Failed to cleanup placeholder image: ${imagePath}`, error);
